@@ -62,6 +62,8 @@ GitHub Pages remains valid for offline scouting, manual entry, and JSON import/e
 - Hold-based live action buttons
 - Local autosave to IndexedDB
 - TBA event schedule import
+- Local scouter roster and generated match assignments
+- Assignment-aware next-match selection
 - Match submission queue
 - JSON export/import fallback
 - Basic strategy dashboard aggregation

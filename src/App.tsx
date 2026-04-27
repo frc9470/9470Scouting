@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { generateScoutAssignments, nextAssignmentForScouter } from "./assignments";
 import {
   aggregateTeams,
   createEmptyDraft,
   createId,
-  formatMatchTime,
   getDeviceId,
   latestSubmissions,
   missingRequiredFields,
@@ -14,18 +14,24 @@ import {
   getLatestDraft,
   importPayload,
   listEventSchedules,
+  listScoutAssignments,
+  listScouterProfiles,
   listSubmissions,
+  deleteScouterProfile,
+  replaceScoutAssignments,
   saveEventSchedule,
   saveDraft,
+  saveScouterProfile,
   saveSubmission,
 } from "./db";
-import { IconClipboard, IconBarChart, IconHardDrive, IconCheckCircle } from "./icons";
+import { IconClipboard, IconBarChart, IconHardDrive, IconCheckCircle, IconFlag } from "./icons";
 import { Input, Choice, OptionGroup } from "./components/Input";
 import { LiveMatch } from "./components/LiveMatch";
 import { PostMatch } from "./components/PostMatch";
 import { Dashboard } from "./components/Dashboard";
 import { DataView } from "./components/DataView";
-import { fetchTbaEventSchedule, normalizeEventKey } from "./tba";
+import { LeadView } from "./components/LeadView";
+import { fetchTbaEventSchedule } from "./tba";
 import type {
   ActionInterval,
   ActionKey,
@@ -33,6 +39,8 @@ import type {
   MatchDraft,
   MatchStep,
   MatchSubmission,
+  ScoutAssignment,
+  ScouterProfile,
   ScheduledMatch,
   ScheduledRobot,
   View,
@@ -55,6 +63,9 @@ export function App() {
   const [selectedTeam, setSelectedTeam] = useState<string | null>(null);
   const [teamFilter, setTeamFilter] = useState("");
   const [eventSchedules, setEventSchedules] = useState<EventSchedule[]>([]);
+  const [scouterProfiles, setScouterProfiles] = useState<ScouterProfile[]>([]);
+  const [scoutAssignments, setScoutAssignments] = useState<ScoutAssignment[]>([]);
+  const [newScouterName, setNewScouterName] = useState("");
   const [tbaEventKey, setTbaEventKeyState] = useState(
     () => localStorage.getItem("team9470.tbaEventKey") ?? "",
   );
@@ -100,14 +111,22 @@ export function App() {
     [draft.matchNumber, qualificationMatches],
   );
   const previewMatches = useMemo(() => qualificationMatches.slice(0, 4), [qualificationMatches]);
+  const nextAssignment = useMemo(
+    () => nextAssignmentForScouter(scoutAssignments, latest, draft.scouterName),
+    [draft.scouterName, latest, scoutAssignments],
+  );
 
   async function refreshSubmissions() { setSubmissions(await listSubmissions()); }
   async function refreshEventSchedules() { setEventSchedules(await listEventSchedules()); }
+  async function refreshScouters() { setScouterProfiles(await listScouterProfiles()); }
+  async function refreshAssignments() { setScoutAssignments(await listScoutAssignments()); }
 
   async function initialize() {
     const savedDraft = await getLatestDraft();
     await refreshSubmissions();
     await refreshEventSchedules();
+    await refreshScouters();
+    await refreshAssignments();
     if (savedDraft) {
       const savedStep = savedDraft.currentStep || "select";
       const savedElapsed = savedDraft.elapsedMs || 0;
@@ -161,6 +180,35 @@ export function App() {
     });
   }
 
+  async function addScouter() {
+    const name = newScouterName.trim();
+    if (!name) return;
+    if (scouterProfiles.some((scouter) => scouter.name.trim().toLowerCase() === name.toLowerCase())) {
+      setNewScouterName("");
+      return;
+    }
+    await saveScouterProfile({
+      id: createId("scouter"),
+      name,
+      active: true,
+      createdAt: new Date().toISOString(),
+    });
+    setNewScouterName("");
+    await refreshScouters();
+  }
+
+  async function removeScouter(id: string) {
+    await deleteScouterProfile(id);
+    await refreshScouters();
+  }
+
+  async function generateAssignments() {
+    if (!activeSchedule) return;
+    const assignments = generateScoutAssignments(activeSchedule, scouterProfiles);
+    await replaceScoutAssignments(activeSchedule.eventKey, assignments);
+    await refreshAssignments();
+  }
+
   function updateField<K extends keyof MatchDraft>(field: K, value: MatchDraft[K]) {
     updateDraft((current) => {
       if (field === "scouterName") localStorage.setItem("team9470.scouterName", String(value));
@@ -185,6 +233,18 @@ export function App() {
       teamNumber: robot.teamNumber,
       alliance: robot.alliance,
       station: robot.station,
+      practiceMode: false,
+    }));
+  }
+
+  function selectAssignment(assignment: ScoutAssignment) {
+    updateDraft((current) => ({
+      ...current,
+      division: assignment.eventKey,
+      matchNumber: String(assignment.matchNumber),
+      teamNumber: assignment.teamNumber,
+      alliance: assignment.alliance,
+      station: assignment.station,
       practiceMode: false,
     }));
   }
@@ -338,6 +398,9 @@ export function App() {
     const payload = JSON.parse(await file.text());
     await importPayload(payload);
     await refreshSubmissions();
+    await refreshEventSchedules();
+    await refreshScouters();
+    await refreshAssignments();
   }
 
   const marked = new Set(draft.eventMarks.map((m) => m.type));
@@ -391,6 +454,21 @@ export function App() {
 
             {step === "select" && (
               <>
+                {nextAssignment && (
+                  <section className={`panel next-assignment ${nextAssignment.alliance}`}>
+                    <div>
+                      <span className="waiting-label">Next Assignment</span>
+                      <h1>{nextAssignment.label} · Team {nextAssignment.teamNumber}</h1>
+                      <p className="muted">
+                        {nextAssignment.station.toUpperCase()} · {nextAssignment.eventKey.toUpperCase()}
+                      </p>
+                    </div>
+                    <button className="button primary" onClick={() => selectAssignment(nextAssignment)}>
+                      Use Assignment
+                    </button>
+                  </section>
+                )}
+
                 {activeSchedule && (
                   <section className="panel schedule-picker">
                     <div className="section-head">
@@ -602,6 +680,20 @@ export function App() {
           />
         )}
 
+        {view === "lead" && (
+          <LeadView
+            activeSchedule={activeSchedule}
+            scouters={scouterProfiles}
+            assignments={scoutAssignments}
+            submissions={latest}
+            newScouterName={newScouterName}
+            setNewScouterName={setNewScouterName}
+            addScouter={() => { void addScouter(); }}
+            removeScouter={(id) => { void removeScouter(id); }}
+            generateAssignments={() => { void generateAssignments(); }}
+          />
+        )}
+
         {view === "data" && (
           <DataView
             submissions={submissions}
@@ -621,6 +713,10 @@ export function App() {
         <button className={`tab-item ${view === "scout" ? "active" : ""}`} onClick={() => setView("scout")}>
           <IconClipboard size={20} />
           <span>Scout</span>
+        </button>
+        <button className={`tab-item ${view === "lead" ? "active" : ""}`} onClick={() => setView("lead")}>
+          <IconFlag size={20} />
+          <span>Lead</span>
         </button>
         <button
           className={`tab-item ${view === "dashboard" ? "active" : ""}`}

@@ -170,7 +170,7 @@ button {
   right: 0;
   z-index: 50;
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   background: rgba(10, 14, 23, 0.85);
   -webkit-backdrop-filter: saturate(180%) blur(20px);
   backdrop-filter: saturate(180%) blur(20px);
@@ -478,6 +478,12 @@ button {
 
 .button.ghost:active {
   background: var(--glass-highlight);
+}
+
+.button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+  transform: none;
 }
 
 /* ── Segmented / Option Groups ───────────────────────────── */
@@ -1119,6 +1125,121 @@ th {
   background: var(--alliance-blue-bg);
   border-color: rgba(59, 130, 246, 0.5);
   color: #bfdbfe;
+}
+
+/* ── Lead / Assignments ──────────────────────────────────── */
+.next-assignment {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.next-assignment.red {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.18), var(--glass));
+  border-color: rgba(239, 68, 68, 0.28);
+}
+
+.next-assignment.blue {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.18), var(--glass));
+  border-color: rgba(59, 130, 246, 0.28);
+}
+
+.next-assignment h1 {
+  margin-top: 4px;
+}
+
+.inline-form {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: end;
+}
+
+.scouter-list,
+.assignment-list {
+  display: grid;
+  gap: 8px;
+}
+
+.scouter-row,
+.assignment-row,
+.workload-pill {
+  background: var(--bg-raised);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+}
+
+.scouter-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 44px;
+  padding: 10px 12px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.workload-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.workload-pill {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 42px;
+  padding: 8px 10px;
+}
+
+.workload-pill span {
+  color: var(--ink-secondary);
+  font-size: 12px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workload-pill strong {
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.assignment-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 58px;
+  padding: 10px 12px;
+}
+
+.assignment-row.red {
+  border-left: 3px solid var(--alliance-red);
+}
+
+.assignment-row.blue {
+  border-left: 3px solid var(--alliance-blue);
+}
+
+.assignment-row strong {
+  display: block;
+  font-size: 14px;
+}
+
+.assignment-row svg {
+  color: var(--green);
+  flex: 0 0 auto;
+}
+
+.exception-block {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
 }
 
 /* ── Scrollbar Styling ───────────────────────────────────── */

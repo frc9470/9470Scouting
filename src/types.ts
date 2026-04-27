@@ -1,6 +1,6 @@
 export type Alliance = "red" | "blue" | "unknown";
 export type MatchStep = "select" | "prematch" | "waiting" | "live" | "postmatch" | "complete";
-export type View = "scout" | "dashboard" | "data";
+export type View = "scout" | "lead" | "dashboard" | "data";
 export type ScheduleAlliance = Exclude<Alliance, "unknown">;
 
 export type ActionKey =
@@ -127,11 +127,34 @@ export interface EventSchedule {
   matches: ScheduledMatch[];
 }
 
+export interface ScouterProfile {
+  id: string;
+  name: string;
+  active: boolean;
+  createdAt: string;
+}
+
+export interface ScoutAssignment {
+  id: string;
+  eventKey: string;
+  matchId: string;
+  matchNumber: number;
+  label: string;
+  teamNumber: string;
+  alliance: ScheduleAlliance;
+  station: ScheduledRobot["station"];
+  scouterId: string;
+  scouterName: string;
+  createdAt: string;
+}
+
 export interface ExportPayload {
   exportedAt: string;
   deviceId: string;
   matchSubmissions: MatchSubmission[];
   eventSchedules?: EventSchedule[];
+  scouterProfiles?: ScouterProfile[];
+  scoutAssignments?: ScoutAssignment[];
 }
 
 export interface TeamAggregate {
