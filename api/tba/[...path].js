@@ -1,0 +1,34 @@
+const TBA_BASE_URL = "https://www.thebluealliance.com/api/v3";
+
+function badRequest(res, message) {
+  res.statusCode = 400;
+  res.setHeader("Content-Type", "text/plain; charset=utf-8");
+  res.end(message);
+}
+
+module.exports = async function handler(req, res) {
+  const authKey = process.env.TBA_AUTH_KEY || process.env.TBA_API_KEY;
+  if (!authKey) {
+    badRequest(res, "Missing TBA_AUTH_KEY or TBA_API_KEY.");
+    return;
+  }
+
+  const rawPath = Array.isArray(req.query.path) ? req.query.path.join("/") : req.query.path;
+  if (!rawPath || rawPath.includes("..")) {
+    badRequest(res, "Invalid TBA path.");
+    return;
+  }
+
+  const upstream = await fetch(`${TBA_BASE_URL}/${rawPath}`, {
+    headers: {
+      "X-TBA-Auth-Key": authKey,
+      "User-Agent": "9470-scouting/0.1",
+    },
+  });
+
+  const body = await upstream.text();
+  res.statusCode = upstream.status;
+  res.setHeader("Content-Type", upstream.headers.get("content-type") || "application/json");
+  res.setHeader("Cache-Control", "s-maxage=300, stale-while-revalidate=1800");
+  res.end(body);
+};
