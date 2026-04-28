@@ -494,6 +494,53 @@ button {
   margin-top: 8px;
 }
 
+.postmatch-sections {
+  display: grid;
+  gap: 16px;
+}
+
+.postmatch-sections .segmented,
+.auto-prompts .row-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  overflow-x: visible;
+  margin-top: 8px;
+}
+
+.postmatch-sections .choice,
+.auto-prompts .choice {
+  flex: 1 1 108px;
+  width: auto;
+  min-width: 0;
+  min-height: 46px;
+  justify-content: center;
+  text-align: center;
+  padding-inline: 12px;
+}
+
+.auto-prompts {
+  display: grid;
+  gap: 14px;
+}
+
+.auto-prompts.compact {
+  gap: 10px;
+}
+
+.auto-prompts.compact h3 {
+  font-size: 12px;
+}
+
+.transition-prompts {
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid rgba(245, 158, 11, 0.18);
+  border-radius: var(--radius-md);
+  background: rgba(245, 158, 11, 0.06);
+}
+
 /* ── Zone Picker (Field Map Overlay) ──────────────────────── */
 .field-map-container {
   position: relative;
@@ -513,28 +560,60 @@ button {
 
 .field-map-zones {
   position: absolute;
-  /* zones sit along the top edge (alliance starting wall) */
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 45%;
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 0;
+  inset: 0;
+  pointer-events: none;
 }
 
 .zone {
+  position: absolute;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(17, 24, 39, 0.35);
-  border: 1px solid rgba(148, 163, 184, 0.15);
+  background: rgba(17, 24, 39, 0.28);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 6px;
   color: var(--ink-secondary);
-  font-size: 13px;
-  font-weight: 700;
+  font-size: 12px;
+  font-weight: 800;
   cursor: pointer;
+  pointer-events: auto;
   transition: all var(--duration-fast) var(--ease-out);
   -webkit-tap-highlight-color: transparent;
+}
+
+.zone-trench-left {
+  left: 0.8%;
+  top: 56%;
+  width: 16%;
+  height: 42%;
+}
+
+.zone-bump-left {
+  left: 16.8%;
+  top: 56%;
+  width: 26.2%;
+  height: 21%;
+}
+
+.zone-hub {
+  left: 43%;
+  top: 56%;
+  width: 14%;
+  height: 21%;
+}
+
+.zone-bump-right {
+  left: 57%;
+  top: 56%;
+  width: 26.2%;
+  height: 21%;
+}
+
+.zone-trench-right {
+  left: 83.2%;
+  top: 56%;
+  width: 16%;
+  height: 42%;
 }
 
 .zone:active {
@@ -624,6 +703,47 @@ button {
   background: linear-gradient(135deg, var(--ink) 0%, var(--ink-secondary) 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.phase-label {
+  margin-bottom: 4px;
+  color: var(--ink-tertiary);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.phase-label.phase-auto,
+.timer.phase-auto {
+  color: var(--purple);
+}
+
+.timer.phase-auto {
+  background: linear-gradient(135deg, #f0abfc, var(--purple));
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+
+.phase-label.phase-transition,
+.timer.phase-transition {
+  color: var(--amber);
+}
+
+.timer.phase-transition {
+  background: linear-gradient(135deg, #fde68a, var(--amber));
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+
+.phase-label.phase-teleop {
+  color: var(--accent);
+}
+
+.timer.phase-teleop {
+  background: linear-gradient(135deg, var(--ink) 0%, #93c5fd 100%);
+  -webkit-background-clip: text;
   background-clip: text;
 }
 
@@ -801,6 +921,70 @@ button {
 .metric .muted {
   font-size: 11px;
   margin-top: 2px;
+}
+
+.metric-action {
+  --metric-color: var(--accent);
+  --metric-bg: rgba(59, 130, 246, 0.1);
+  --metric-border: rgba(59, 130, 246, 0.24);
+  background: var(--metric-bg);
+  border-color: var(--metric-border);
+}
+
+.metric-action strong {
+  color: var(--metric-color);
+}
+
+.metric-action .muted {
+  color: color-mix(in srgb, var(--metric-color) 64%, var(--ink-secondary));
+}
+
+.metric-driving {
+  --metric-color: var(--accent);
+  --metric-bg: rgba(59, 130, 246, 0.1);
+  --metric-border: rgba(59, 130, 246, 0.24);
+}
+
+.metric-intaking {
+  --metric-color: var(--cyan);
+  --metric-bg: rgba(6, 182, 212, 0.1);
+  --metric-border: rgba(6, 182, 212, 0.24);
+}
+
+.metric-scoring {
+  --metric-color: var(--yellow);
+  --metric-bg: rgba(234, 179, 8, 0.1);
+  --metric-border: rgba(234, 179, 8, 0.26);
+}
+
+.metric-feeding {
+  --metric-color: var(--green);
+  --metric-bg: rgba(34, 197, 94, 0.1);
+  --metric-border: rgba(34, 197, 94, 0.24);
+}
+
+.metric-defense {
+  --metric-color: var(--red);
+  --metric-bg: rgba(239, 68, 68, 0.1);
+  --metric-border: rgba(239, 68, 68, 0.26);
+}
+
+.metric-blocked {
+  --metric-color: var(--purple);
+  --metric-bg: rgba(168, 85, 247, 0.1);
+  --metric-border: rgba(168, 85, 247, 0.24);
+}
+
+.metric-beached {
+  --metric-color: var(--orange);
+  --metric-bg: rgba(249, 115, 22, 0.1);
+  --metric-border: rgba(249, 115, 22, 0.26);
+}
+
+.metric-missing {
+  --metric-color: var(--slate);
+  --metric-bg: rgba(148, 163, 184, 0.08);
+  --metric-border: rgba(148, 163, 184, 0.2);
 }
 
 /* ── Submission Cards ────────────────────────────────────── */
@@ -1337,6 +1521,359 @@ th {
 .robot-pick.blue.selected {
   background: var(--alliance-blue-bg);
   border-color: rgba(59, 130, 246, 0.5);
+  color: #bfdbfe;
+}
+
+/* ── Match Selection List ───────────────────────────────── */
+.match-selection {
+  display: grid;
+  gap: 10px;
+}
+
+.match-selection-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 2px 0;
+}
+
+.match-selection-head h1 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+
+.match-live-pill {
+  flex: 0 0 auto;
+  padding: 5px 9px;
+  border-radius: var(--radius-pill);
+  background: rgba(34, 197, 94, 0.1);
+  border: 1px solid rgba(34, 197, 94, 0.24);
+  color: var(--green);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.match-list {
+  display: grid;
+  gap: 9px;
+}
+
+.match-day-divider {
+  position: sticky;
+  top: 62px;
+  z-index: 12;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 18px 0 8px;
+  padding: 7px 2px 8px;
+  background: linear-gradient(to bottom, var(--bg) 70%, transparent);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.match-day-divider strong {
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+
+.match-day-divider span {
+  color: var(--ink-secondary);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.shift-divider {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 18px 0 7px;
+  padding: 0 2px 8px;
+  border-bottom: 1px solid rgba(59, 130, 246, 0.32);
+  background: transparent;
+}
+
+.shift-divider div {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.shift-divider strong {
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+}
+
+.shift-divider span,
+.shift-divider em {
+  color: var(--ink-secondary);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.shift-divider em {
+  flex: 0 0 auto;
+  color: var(--ink);
+}
+
+.match-break-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 14px 2px 7px;
+  color: var(--ink-tertiary);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.match-break-divider::before,
+.match-break-divider::after {
+  content: '';
+  height: 1px;
+  flex: 1 1 auto;
+  background: rgba(148, 163, 184, 0.16);
+}
+
+.match-card {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-raised);
+  transition: border-color var(--duration-fast) var(--ease-out),
+              opacity var(--duration-fast) var(--ease-out),
+              transform var(--duration-fast) var(--ease-out);
+}
+
+.match-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: transparent;
+}
+
+.match-card.in-my-shift {
+  border-color: rgba(59, 130, 246, 0.4);
+  box-shadow: inset 0 0 0 1px rgba(59, 130, 246, 0.06), 0 0 18px rgba(59, 130, 246, 0.12);
+}
+
+.match-card.in-my-shift::before {
+  background: var(--accent);
+}
+
+.match-card.submitted {
+  border-color: rgba(34, 197, 94, 0.34);
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.08), var(--bg-raised) 62%);
+}
+
+.match-card.passed {
+  border-color: rgba(148, 163, 184, 0.16);
+  background: rgba(17, 24, 39, 0.54);
+  opacity: 0.66;
+}
+
+.match-card.passed.submitted {
+  border-color: rgba(34, 197, 94, 0.18);
+  background:
+    linear-gradient(90deg, rgba(34, 197, 94, 0.07), transparent 34%),
+    rgba(17, 24, 39, 0.54);
+  opacity: 0.66;
+}
+
+.match-card.passed.submitted::before {
+  background: transparent;
+}
+
+.match-card.passed.missed {
+  border-color: rgba(245, 158, 11, 0.2);
+  background:
+    linear-gradient(90deg, rgba(245, 158, 11, 0.08), transparent 34%),
+    rgba(17, 24, 39, 0.54);
+  opacity: 0.66;
+}
+
+.match-card.missed {
+  border-color: rgba(245, 158, 11, 0.34);
+}
+
+.match-card.passed.in-my-shift,
+.match-card.passed.missed {
+  box-shadow: none;
+}
+
+.match-card.passed.in-my-shift::before {
+  background: transparent;
+}
+
+.match-card.expanded {
+  opacity: 1;
+  transform: translateY(-1px);
+}
+
+.match-card-main {
+  display: grid;
+  gap: 9px;
+  width: 100%;
+  padding: 12px 12px 12px 14px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+
+.match-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.match-card-top strong {
+  display: block;
+  margin-bottom: 3px;
+  font-size: 17px;
+  font-weight: 900;
+}
+
+.match-card-top svg {
+  flex: 0 0 auto;
+  color: var(--ink-tertiary);
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.match-card.expanded .match-card-top svg {
+  transform: rotate(90deg);
+}
+
+.match-teams {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.match-teams-red {
+  color: #fca5a5;
+}
+
+.match-teams-blue {
+  color: #93c5fd;
+}
+
+.match-teams-divider {
+  color: var(--ink-tertiary);
+}
+
+.match-card.passed:not(.submitted) .match-teams-red,
+.match-card.passed:not(.submitted) .match-teams-blue,
+.match-card.passed:not(.submitted) .match-teams-divider {
+  color: var(--ink-tertiary);
+}
+
+.match-card.passed.submitted .match-teams-red {
+  color: #fecaca;
+}
+
+.match-card.passed.submitted .match-teams-blue {
+  color: #bfdbfe;
+}
+
+.match-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.match-chip-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 22px;
+  padding: 3px 7px;
+  border-radius: var(--radius-pill);
+  background: rgba(148, 163, 184, 0.1);
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  color: var(--ink-secondary);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.match-chip-status.assigned-red {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.22);
+  color: #fecaca;
+}
+
+.match-chip-status.assigned-blue {
+  background: rgba(59, 130, 246, 0.12);
+  border-color: rgba(59, 130, 246, 0.24);
+  color: #bfdbfe;
+}
+
+.match-chip-status.done {
+  background: rgba(34, 197, 94, 0.1);
+  border-color: rgba(34, 197, 94, 0.22);
+  color: var(--green);
+}
+
+.match-chip-status.queued {
+  background: rgba(245, 158, 11, 0.1);
+  border-color: rgba(245, 158, 11, 0.2);
+  color: var(--amber);
+}
+
+.match-chip-status.missed {
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.24);
+  color: var(--amber);
+}
+
+.match-chip-status.live {
+  background: rgba(34, 197, 94, 0.1);
+  border-color: rgba(34, 197, 94, 0.22);
+  color: var(--green);
+}
+
+.match-robot-picker {
+  display: grid;
+  gap: 10px;
+  padding: 0 12px 12px 14px;
+}
+
+.match-assigned-start {
+  min-height: 46px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--glass-border);
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.match-assigned-start.red {
+  background: rgba(239, 68, 68, 0.14);
+  border-color: rgba(239, 68, 68, 0.32);
+  color: #fecaca;
+}
+
+.match-assigned-start.blue {
+  background: rgba(59, 130, 246, 0.14);
+  border-color: rgba(59, 130, 246, 0.32);
   color: #bfdbfe;
 }
 
@@ -2304,6 +2841,115 @@ code {
   color: var(--amber);
   font-size: 13px;
   font-weight: 600;
+}
+
+/* ── Lead Day Availability ──────────────────────────────── */
+.lead-day-tabs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
+  gap: 8px;
+}
+
+.lead-day-tab {
+  display: grid;
+  gap: 2px;
+  padding: 9px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--glass-border);
+  background: var(--bg-raised);
+  color: var(--ink-secondary);
+  text-align: left;
+}
+
+.lead-day-tab strong {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.lead-day-tab span,
+.lead-day-tab em {
+  color: var(--ink-tertiary);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.lead-day-tab.active {
+  border-color: rgba(59, 130, 246, 0.42);
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.lead-day-tab.active strong {
+  color: var(--accent);
+}
+
+.day-availability {
+  display: grid;
+  gap: 8px;
+}
+
+.day-availability-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.day-availability-head span {
+  color: var(--ink-secondary);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.day-availability-head div {
+  display: flex;
+  gap: 10px;
+}
+
+.availability-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.availability-chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 38px;
+  padding: 7px 9px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--glass-border);
+  background: rgba(17, 24, 39, 0.58);
+  color: var(--ink-tertiary);
+  text-align: left;
+}
+
+.availability-chip.included {
+  border-color: rgba(34, 197, 94, 0.26);
+  background: rgba(34, 197, 94, 0.08);
+  color: var(--ink);
+}
+
+.availability-chip span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.availability-chip em {
+  flex: 0 0 auto;
+  color: inherit;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 /* ── Sub Sheet ──────────────────────────────────────────── */

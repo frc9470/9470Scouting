@@ -1,5 +1,6 @@
 import { createId } from "./domain";
 import type { NexusLiveState } from "./nexus";
+import { splitMatchesIntoSegments } from "./scheduleDays";
 import type {
   EventSchedule,
   MatchSubmission,
@@ -206,22 +207,32 @@ const SHIFT_NAMES = [
 export function autoGenerateShifts(
   schedule: EventSchedule,
   members: TeamMember[],
-  options: { matchesPerShift?: number; studentWeight?: number } = {},
+  options: {
+    matchesPerShift?: number;
+    studentWeight?: number;
+    minBreakGapMs?: number;
+    namePrefix?: string;
+  } = {},
 ): ScoutShift[] {
-  const { matchesPerShift = 10, studentWeight = 2.0 } = options;
+  const { matchesPerShift = 10, studentWeight = 2.0, minBreakGapMs, namePrefix } = options;
   const qualMatches = schedule.matches
     .filter((m) => m.compLevel === "qm")
     .sort((a, b) => a.matchNumber - b.matchNumber);
 
   if (qualMatches.length === 0 || members.length === 0) return [];
 
-  const firstMatch = qualMatches[0].matchNumber;
-  const lastMatch = qualMatches[qualMatches.length - 1].matchNumber;
-
-  // Build shift boundaries
+  // Build shift boundaries inside day/break segments only.
   const shiftBounds: { start: number; end: number }[] = [];
-  for (let s = firstMatch; s <= lastMatch; s += matchesPerShift) {
-    shiftBounds.push({ start: s, end: Math.min(s + matchesPerShift - 1, lastMatch) });
+  const segments = splitMatchesIntoSegments(qualMatches, minBreakGapMs);
+  for (const segment of segments) {
+    for (let i = 0; i < segment.matches.length; i += matchesPerShift) {
+      const chunk = segment.matches.slice(i, i + matchesPerShift);
+      if (chunk.length === 0) continue;
+      shiftBounds.push({
+        start: chunk[0].matchNumber,
+        end: chunk[chunk.length - 1].matchNumber,
+      });
+    }
   }
 
   // Track assignments per person
@@ -273,7 +284,9 @@ export function autoGenerateShifts(
     shifts.push({
       id: createId("shift"),
       eventKey: schedule.eventKey,
-      name: SHIFT_NAMES[i] ?? `Shift ${i + 1}`,
+      name: namePrefix
+        ? `${namePrefix} ${SHIFT_NAMES[i] ?? `Shift ${i + 1}`}`
+        : SHIFT_NAMES[i] ?? `Shift ${i + 1}`,
       startMatch: start,
       endMatch: end,
       roster,

@@ -13,6 +13,7 @@ export function DataView({
   syncSupabase,
   exportJson,
   importJson,
+  seedTestEvent,
 }: {
   submissions: MatchSubmission[];
   schedules: EventSchedule[];
@@ -25,6 +26,7 @@ export function DataView({
   syncSupabase: () => void;
   exportJson: () => void;
   importJson: (file: File) => void;
+  seedTestEvent?: () => void;
 }) {
   const pending = submissions.filter((s) => s.syncStatus !== "synced").length;
   const failed = submissions.filter((s) => s.syncStatus === "failed").length;
@@ -77,6 +79,14 @@ export function DataView({
             />
           </label>
         </div>
+        {seedTestEvent && (
+          <div className="button-row top-space">
+            <button className="button ghost" onClick={seedTestEvent}>
+              Seed fake live event
+            </button>
+            <span className="sync-message">Dev only. Replaces cached fake schedule.</span>
+          </div>
+        )}
       </section>
 
       <section className="panel data-card">

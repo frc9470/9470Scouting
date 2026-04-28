@@ -1,6 +1,7 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { calculateWorkload, coveredAssignmentIds } from "../assignments";
 import { IconAlertTriangle, IconFlag, IconGraduationCap, IconUser, IconZap } from "../icons";
+import { groupMatchesByDay } from "../scheduleDays";
 import { Metric } from "./Input";
 import { ShiftCard } from "./ShiftCard";
 import { SubSheet } from "./SubSheet";
@@ -10,6 +11,7 @@ import type {
   MatchSubmission,
   ScoutAssignment,
   ScoutShift,
+  ScheduledMatch,
   ShiftSlot,
   StationType,
   SubOverride,
@@ -35,7 +37,7 @@ export function LeadView({
   shifts: ScoutShift[];
   assignments: ScoutAssignment[];
   submissions: MatchSubmission[];
-  onAutoGenerate: () => void;
+  onAutoGenerate: (matches?: ScheduledMatch[], members?: TeamMember[], dayLabel?: string) => void;
   onSaveShift: (shift: ScoutShift) => void;
   onDeleteShift: (id: string) => void;
   onUpdateShifts: (shifts: ScoutShift[]) => void;
@@ -46,6 +48,8 @@ export function LeadView({
   const [activeSlot, setActiveSlot] = useState<{ shift: ScoutShift; slot: ShiftSlot } | null>(null);
   const [editingShiftId, setEditingShiftId] = useState<string | null>(null);
   const [showRoster, setShowRoster] = useState(false);
+  const [selectedShiftDayId, setSelectedShiftDayId] = useState<string | null>(null);
+  const [includedByDay, setIncludedByDay] = useState<Record<string, string[]>>({});
 
   const covered = coveredAssignmentIds(assignments, submissions);
   const totalAssignments = assignments.length;
@@ -56,6 +60,16 @@ export function LeadView({
   const students = profiles.filter((p) => p.group === "student");
   const parents = profiles.filter((p) => p.group === "parent");
   const unset = profiles.filter((p) => !p.group);
+  const qualMatches = useMemo(
+    () => activeSchedule?.matches.filter((match) => match.compLevel === "qm") ?? [],
+    [activeSchedule],
+  );
+  const shiftDays = useMemo(() => groupMatchesByDay(qualMatches), [qualMatches]);
+  const activeShiftDay = shiftDays.find((day) => day.id === selectedShiftDayId) ?? shiftDays[0] ?? null;
+  const activeIncludedIds = activeShiftDay
+    ? includedByDay[activeShiftDay.id] ?? profiles.map((profile) => profile.id)
+    : [];
+  const activeIncludedMembers = profiles.filter((profile) => activeIncludedIds.includes(profile.id));
 
   const studentAvg =
     students.length > 0
@@ -161,6 +175,20 @@ export function LeadView({
     );
   }
 
+  function toggleDayMember(dayId: string, userId: string) {
+    setIncludedByDay((current) => {
+      const existing = current[dayId] ?? profiles.map((profile) => profile.id);
+      const next = existing.includes(userId)
+        ? existing.filter((id) => id !== userId)
+        : [...existing, userId];
+      return { ...current, [dayId]: next };
+    });
+  }
+
+  function setDayIncluded(dayId: string, userIds: string[]) {
+    setIncludedByDay((current) => ({ ...current, [dayId]: userIds }));
+  }
+
   return (
     <div className="grid">
       {/* Header + Coverage */}
@@ -202,13 +230,76 @@ export function LeadView({
 
       {/* Actions */}
       <section className="panel">
-        <div className="button-row">
+        <div className="section-head">
+          <div>
+            <h2>Shift Generation</h2>
+            <p className="muted small">Pick a day, exclude anyone unavailable, then generate that day only.</p>
+          </div>
+        </div>
+
+        {shiftDays.length > 0 && (
+          <div className="lead-day-tabs top-space">
+            {shiftDays.map((day) => (
+              <button
+                key={day.id}
+                className={`lead-day-tab ${activeShiftDay?.id === day.id ? "active" : ""}`}
+                onClick={() => setSelectedShiftDayId(day.id)}
+              >
+                <strong>{day.label}</strong>
+                <span>{day.dateLabel}</span>
+                <em>Q{day.matches[0]?.matchNumber}–Q{day.matches[day.matches.length - 1]?.matchNumber}</em>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {activeShiftDay && (
+          <div className="day-availability top-space">
+            <div className="day-availability-head">
+              <span>{activeIncludedMembers.length}/{profiles.length} available</span>
+              <div>
+                <button
+                  className="link-button"
+                  onClick={() => setDayIncluded(activeShiftDay.id, profiles.map((profile) => profile.id))}
+                >
+                  All
+                </button>
+                <button
+                  className="link-button"
+                  onClick={() => setDayIncluded(activeShiftDay.id, [])}
+                >
+                  None
+                </button>
+              </div>
+            </div>
+            <div className="availability-grid">
+              {profiles.map((profile) => {
+                const included = activeIncludedIds.includes(profile.id);
+                return (
+                  <button
+                    key={profile.id}
+                    className={`availability-chip ${included ? "included" : ""}`}
+                    onClick={() => toggleDayMember(activeShiftDay.id, profile.id)}
+                  >
+                    <span>{profile.display_name}</span>
+                    <em>{included ? "In" : "Out"}</em>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        <div className="button-row top-space">
           <button
             className="button primary"
-            onClick={onAutoGenerate}
-            disabled={!activeSchedule || profiles.length === 0}
+            onClick={() => {
+              if (!activeShiftDay) return;
+              onAutoGenerate(activeShiftDay.matches, activeIncludedMembers, activeShiftDay.label);
+            }}
+            disabled={!activeSchedule || !activeShiftDay || activeIncludedMembers.length === 0}
           >
-            <IconZap size={16} /> Auto-Generate Shifts
+            <IconZap size={16} /> Generate {activeShiftDay?.label ?? "Day"} Shifts
           </button>
           <button
             className="button ghost"
@@ -299,7 +390,7 @@ export function LeadView({
           <div className="empty" style={{ textAlign: "center", padding: 20 }}>
             <p>No shifts created yet.</p>
             <p className="muted small">
-              Tap "⚡ Auto-Generate" to create balanced shifts,
+              Pick a day above and generate balanced shifts,
               <br />or manually add shifts.
             </p>
           </div>

@@ -28,6 +28,7 @@ export function createEmptyDraft(): MatchDraft {
     updatedAt: now,
     currentStep: "select",
     elapsedMs: 0,
+    liveStartedAtUnixMs: null,
     scouterName: localStorage.getItem("team9470.scouterName") ?? "",
     division: "",
     matchNumber: "",
@@ -37,7 +38,7 @@ export function createEmptyDraft(): MatchDraft {
     practiceMode: false,
     preMatch: {
       startingPose: "",
-      robotStatus: "unknown",
+      robotStatus: "present",
     },
     actionIntervals: [],
     eventMarks: [],
@@ -54,6 +55,8 @@ export function createEmptyDraft(): MatchDraft {
       autoSuccessful: "unknown",
       eightPreloadObserved: "unknown",
       depotObserved: "unknown",
+      bumpObserved: "unknown",
+      trenchObserved: "unknown",
       bpsEstimate: "unknown",
       driverSkill: "",
       defenseEffectiveness: "not_observed",
@@ -66,6 +69,9 @@ export function createEmptyDraft(): MatchDraft {
 
 export function summarizeIntervals(intervals: ActionInterval[], currentMs = 0) {
   const summary = {
+    drivingMs: 0,
+    intakingMs: 0,
+    scoringMs: 0,
     defenseMs: 0,
     feedingMs: 0,
     blockedMs: 0,
@@ -76,12 +82,24 @@ export function summarizeIntervals(intervals: ActionInterval[], currentMs = 0) {
   for (const interval of intervals) {
     const endMs = interval.endMs ?? currentMs;
     const duration = Math.max(0, endMs - interval.startMs);
+    if (interval.action === "intaking") summary.intakingMs += duration;
+    if (interval.action === "scoring") summary.scoringMs += duration;
     if (interval.action === "defense") summary.defenseMs += duration;
     if (interval.action === "feeding") summary.feedingMs += duration;
     if (interval.action === "blocked") summary.blockedMs += duration;
     if (interval.action === "beached") summary.beachedMs += duration;
     if (interval.action === "missing") summary.missingMs += duration;
   }
+
+  const explicitMs =
+    summary.intakingMs +
+    summary.scoringMs +
+    summary.defenseMs +
+    summary.feedingMs +
+    summary.blockedMs +
+    summary.beachedMs +
+    summary.missingMs;
+  summary.drivingMs = Math.max(0, currentMs - explicitMs);
 
   return summary;
 }

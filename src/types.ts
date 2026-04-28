@@ -57,6 +57,7 @@ export interface MatchDraft {
   updatedAt: string;
   currentStep: MatchStep;
   elapsedMs: number;
+  liveStartedAtUnixMs: number | null;
   scouterName: string;
   division: string;
   matchNumber: string;
@@ -76,6 +77,8 @@ export interface MatchDraft {
     autoSuccessful: "yes" | "partial" | "no" | "unknown";
     eightPreloadObserved: "yes" | "no" | "unknown";
     depotObserved: "yes" | "no" | "unknown";
+    bumpObserved: "yes" | "no" | "unknown";
+    trenchObserved: "yes" | "no" | "unknown";
     bpsEstimate: "<5" | "10" | "20" | "25+" | "unknown";
     driverSkill: "" | "1" | "2" | "3" | "4" | "5";
     defenseEffectiveness: "" | "1" | "2" | "3" | "4" | "5" | "not_observed";
@@ -197,6 +200,7 @@ export interface ExportPayload {
   eventSchedules?: EventSchedule[];
   scouterProfiles?: ScouterProfile[];
   scoutAssignments?: ScoutAssignment[];
+  scoutShifts?: ScoutShift[];
 }
 
 export interface TeamAggregate {

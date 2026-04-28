@@ -1,28 +1,9 @@
 import { NOTABLE_REASONS } from "../constants";
 import { missingRequiredFields, summarizeIntervals } from "../domain";
 import { IconAlertTriangle } from "../icons";
+import { AutoPrompts } from "./AutoPrompts";
 import { Choice, Metric, OptionGroup, StarRating } from "./Input";
 import type { MatchDraft } from "../types";
-
-type AutoResult = "success" | "partial" | "failed" | "no_auto" | "unknown";
-type AutoType = "basic_or_other" | "depot" | "eight_preload" | "unknown";
-
-function getAutoResult(postMatch: MatchDraft["postMatch"]): AutoResult {
-  if (postMatch.autoAttempted === "no") return "no_auto";
-  if (postMatch.autoSuccessful === "yes") return "success";
-  if (postMatch.autoSuccessful === "partial") return "partial";
-  if (postMatch.autoSuccessful === "no") return "failed";
-  return "unknown";
-}
-
-function getAutoType(postMatch: MatchDraft["postMatch"]): AutoType {
-  if (postMatch.eightPreloadObserved === "yes") return "eight_preload";
-  if (postMatch.depotObserved === "yes") return "depot";
-  if (postMatch.eightPreloadObserved === "no" && postMatch.depotObserved === "no") {
-    return "basic_or_other";
-  }
-  return "unknown";
-}
 
 export function PostMatch({
   draft,
@@ -45,48 +26,6 @@ export function PostMatch({
   const summary = summarizeIntervals(draft.actionIntervals, elapsedMs);
   const missing = missingRequiredFields(draft);
   const hasNotable = draft.eventMarks.some((m) => m.type === "notable");
-  const autoResult = getAutoResult(draft.postMatch);
-  const autoType = getAutoType(draft.postMatch);
-
-  function updateAutoResult(result: AutoResult) {
-    updateDraft((current) => {
-      const nextPostMatch = { ...current.postMatch };
-      if (result === "no_auto") {
-        nextPostMatch.autoAttempted = "no";
-        nextPostMatch.autoSuccessful = "no";
-        nextPostMatch.eightPreloadObserved = "no";
-        nextPostMatch.depotObserved = "no";
-      } else if (result === "unknown") {
-        nextPostMatch.autoAttempted = "unknown";
-        nextPostMatch.autoSuccessful = "unknown";
-      } else {
-        nextPostMatch.autoAttempted = "yes";
-        nextPostMatch.autoSuccessful =
-          result === "success" ? "yes" : result === "partial" ? "partial" : "no";
-      }
-      return { ...current, postMatch: nextPostMatch };
-    });
-  }
-
-  function updateAutoType(type: AutoType) {
-    updateDraft((current) => {
-      const nextPostMatch = { ...current.postMatch };
-      if (type === "eight_preload") {
-        nextPostMatch.eightPreloadObserved = "yes";
-        nextPostMatch.depotObserved = "no";
-      } else if (type === "depot") {
-        nextPostMatch.eightPreloadObserved = "no";
-        nextPostMatch.depotObserved = "yes";
-      } else if (type === "basic_or_other") {
-        nextPostMatch.eightPreloadObserved = "no";
-        nextPostMatch.depotObserved = "no";
-      } else {
-        nextPostMatch.eightPreloadObserved = "unknown";
-        nextPostMatch.depotObserved = "unknown";
-      }
-      return { ...current, postMatch: nextPostMatch };
-    });
-  }
 
   return (
     <section className="panel">
@@ -94,42 +33,27 @@ export function PostMatch({
       <p className="muted">Convert observations into strategy data.</p>
 
       <div className="metric-grid summary-grid">
-        <Metric label="Defense" value={`${Math.round(summary.defenseMs / 1000)}s`} />
-        <Metric label="Feeding" value={`${Math.round(summary.feedingMs / 1000)}s`} />
-        <Metric label="Blocked" value={`${Math.round(summary.blockedMs / 1000)}s`} />
-        <Metric label="Beached" value={`${Math.round(summary.beachedMs / 1000)}s`} />
-        <Metric label="Missing" value={`${Math.round(summary.missingMs / 1000)}s`} />
+        <Metric className="metric-action metric-driving" label="Driving" value={`${Math.round(summary.drivingMs / 1000)}s`} />
+        <Metric className="metric-action metric-intaking" label="Intaking" value={`${Math.round(summary.intakingMs / 1000)}s`} />
+        <Metric className="metric-action metric-scoring" label="Scoring" value={`${Math.round(summary.scoringMs / 1000)}s`} />
+        <Metric className="metric-action metric-defense" label="Defense" value={`${Math.round(summary.defenseMs / 1000)}s`} />
+        <Metric className="metric-action metric-feeding" label="Feeding" value={`${Math.round(summary.feedingMs / 1000)}s`} />
+        <Metric className="metric-action metric-blocked" label="Blocked" value={`${Math.round(summary.blockedMs / 1000)}s`} />
+        <Metric className="metric-action metric-beached" label="Beached" value={`${Math.round(summary.beachedMs / 1000)}s`} />
+        <Metric className="metric-action metric-missing" label="Missing" value={`${Math.round(summary.missingMs / 1000)}s`} />
       </div>
 
-      <div className="grid two top-space">
-        <OptionGroup
-          title="Auto result"
-          options={[
-            ["success", "Success"],
-            ["partial", "Partial"],
-            ["failed", "Failed"],
-            ["no_auto", "No auto"],
-            ["unknown", "Unknown"],
-          ] as const}
-          value={autoResult}
-          onChange={updateAutoResult}
-        />
-        {autoResult !== "no_auto" && (
-          <OptionGroup
-            title="Observed auto type"
-            options={[
-              ["basic_or_other", "Basic/other"],
-              ["depot", "Depot"],
-              ["eight_preload", "8-preload"],
-              ["unknown", "Unknown"],
-            ] as const}
-            value={autoType}
-            onChange={updateAutoType}
-          />
-        )}
+      <div className="postmatch-sections top-space">
+        <AutoPrompts draft={draft} updateDraft={updateDraft} />
         <OptionGroup
           title="BPS estimate"
-          options={["<5", "10", "20", "25+", "unknown"].map((v) => [v, v] as [string, string])}
+          options={[
+            ["<5", "<5"],
+            ["10", "10"],
+            ["20", "20"],
+            ["25+", "25+"],
+            ["unknown", "Not sure"],
+          ] as const}
           value={draft.postMatch.bpsEstimate}
           onChange={(v) => updatePostMatch("bpsEstimate", v as MatchDraft["postMatch"]["bpsEstimate"])}
         />
@@ -145,7 +69,12 @@ export function PostMatch({
         />
         <OptionGroup
           title="Can steal"
-          options={["none", "partial", "full", "not_observed"].map((v) => [v, v] as [string, string])}
+          options={[
+            ["none", "None"],
+            ["partial", "Partial"],
+            ["full", "Full"],
+            ["not_observed", "Not observed"],
+          ] as const}
           value={draft.postMatch.canSteal}
           onChange={(v) => updatePostMatch("canSteal", v as MatchDraft["postMatch"]["canSteal"])}
         />

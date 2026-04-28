@@ -61,9 +61,9 @@ export function OptionGroup<T extends string>({
   );
 }
 
-export function Metric({ label, value }: { label: string; value: React.ReactNode }) {
+export function Metric({ label, value, className = "" }: { label: string; value: React.ReactNode; className?: string }) {
   return (
-    <div className="metric">
+    <div className={`metric ${className}`}>
       <strong>{value}</strong>
       <span className="muted small">{label}</span>
     </div>

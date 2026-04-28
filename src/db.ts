@@ -179,16 +179,14 @@ export async function buildExportPayload(): Promise<ExportPayload> {
     eventSchedules: await db.eventSchedules.toArray(),
     scouterProfiles: await db.scouterProfiles.toArray(),
     scoutAssignments: await db.scoutAssignments.toArray(),
+    scoutShifts: await db.scoutShifts.toArray(),
   };
 }
 
 export async function importPayload(payload: ExportPayload) {
   await db.transaction(
     "rw",
-    db.matchSubmissions,
-    db.eventSchedules,
-    db.scouterProfiles,
-    db.scoutAssignments,
+    [db.matchSubmissions, db.eventSchedules, db.scouterProfiles, db.scoutAssignments, db.scoutShifts],
     async () => {
     for (const submission of payload.matchSubmissions || []) {
       await db.matchSubmissions.put(submission);
@@ -201,6 +199,9 @@ export async function importPayload(payload: ExportPayload) {
     }
     for (const assignment of payload.scoutAssignments || []) {
       await db.scoutAssignments.put(assignment);
+    }
+    for (const shift of payload.scoutShifts || []) {
+      await db.scoutShifts.put(shift);
     }
   });
 }

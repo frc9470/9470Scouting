@@ -22,6 +22,8 @@ import {
   listEventSchedules,
   listScoutAssignments,
   listSubmissions,
+  replaceScoutAssignments,
+  replaceShifts,
   saveEventSchedule,
   saveDraft,
   saveSubmission,
@@ -36,6 +38,7 @@ import { DataView } from "./components/DataView";
 import { GroupSelect } from "./components/GroupSelect";
 import { LeadView } from "./components/LeadView";
 import { LoginScreen } from "./components/LoginScreen";
+import { MatchSelectionList } from "./components/MatchSelectionList";
 import { isSupabaseConfigured } from "./supabase";
 import {
   syncWithSupabase,
@@ -53,6 +56,7 @@ import {
   updateMemberRole,
 } from "./sync";
 import { fetchTbaEventSchedule } from "./tba";
+import { groupMatchesByDay } from "./scheduleDays";
 import type {
   ActionInterval,
   ActionKey,
@@ -71,9 +75,19 @@ import type {
 } from "./types";
 
 const SECOND = 1000;
-const MATCH_DURATION_MS = 160 * SECOND; // 2:40
+const AUTO_DURATION_MS = 20 * SECOND;
+const TRANSITION_DURATION_MS = 3 * SECOND;
+const TELEOP_DURATION_MS = 140 * SECOND;
+const MATCH_DURATION_MS = AUTO_DURATION_MS + TRANSITION_DURATION_MS + TELEOP_DURATION_MS;
 
 const SYNC_INTERVAL_MS = 30_000;
+const STARTING_POSE_ZONES = [
+  { id: "zone_1", label: "Trench", className: "zone-trench-left" },
+  { id: "zone_2", label: "Bump", className: "zone-bump-left" },
+  { id: "zone_3", label: "Hub", className: "zone-hub" },
+  { id: "zone_4", label: "Bump", className: "zone-bump-right" },
+  { id: "zone_5", label: "Trench", className: "zone-trench-right" },
+] as const;
 
 export function App() {
   const { user, profile, loading: authLoading, signInWithGoogle, signOut, refreshProfile } = useAuth();
@@ -160,6 +174,45 @@ export function App() {
     return () => clearInterval(interval);
   }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Opportunistic sync on reconnect/reopen ───────────────
+  useEffect(() => {
+    if (!user || !isSupabaseConfigured()) return;
+    let syncing = false;
+
+    async function runSync() {
+      if (syncing) return;
+      syncing = true;
+      try {
+        setSyncIndicator("syncing");
+        await syncAll();
+        await refreshSubmissions();
+        await refreshAssignments();
+        await refreshEventSchedules();
+        await refreshShifts();
+        setSyncIndicator("synced");
+      } catch {
+        setSyncIndicator("pending");
+      } finally {
+        syncing = false;
+      }
+    }
+
+    function syncWhenVisible() {
+      if (document.visibilityState === "visible") void runSync();
+    }
+
+    window.addEventListener("online", runSync);
+    window.addEventListener("focus", runSync);
+    document.addEventListener("visibilitychange", syncWhenVisible);
+    void runSync();
+
+    return () => {
+      window.removeEventListener("online", runSync);
+      window.removeEventListener("focus", runSync);
+      document.removeEventListener("visibilitychange", syncWhenVisible);
+    };
+  }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Nexus live polling (every 15s) ─────────────────────────
   useEffect(() => {
     if (!tbaEventKey) return;
@@ -180,6 +233,18 @@ export function App() {
     const interval = window.setInterval(() => setNow(Date.now()), SECOND);
     return () => window.clearInterval(interval);
   }, [step]);
+
+  useEffect(() => {
+    if (step !== "live") return;
+    const interval = window.setInterval(() => {
+      setDraft((current) => {
+        const next = { ...current, currentStep: "live" as const, elapsedMs: currentElapsedMs() };
+        void saveDraft(next).then(() => setSaveStatus("Saved"));
+        return next;
+      });
+    }, 3 * SECOND);
+    return () => window.clearInterval(interval);
+  }, [step, matchStartedAt, elapsedBeforeResume]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const end = () => endActiveAction();
@@ -208,6 +273,7 @@ export function App() {
     () => activeSchedule?.matches.filter((match) => match.compLevel === "qm") ?? [],
     [activeSchedule],
   );
+  const matchDayGroups = useMemo(() => groupMatchesByDay(qualificationMatches), [qualificationMatches]);
   const selectedScheduledMatch = useMemo(
     () => qualificationMatches.find((match) => String(match.matchNumber) === draft.matchNumber),
     [draft.matchNumber, qualificationMatches],
@@ -235,20 +301,24 @@ export function App() {
     if (savedDraft) {
       const savedStep = savedDraft.currentStep || "select";
       const savedElapsed = savedDraft.elapsedMs || 0;
+      const wallClockElapsed =
+        savedStep === "live" && savedDraft.liveStartedAtUnixMs
+          ? Math.max(savedElapsed, Date.now() - savedDraft.liveStartedAtUnixMs)
+          : savedElapsed;
       const restoredDraft =
         savedStep === "live"
           ? {
               ...savedDraft,
               currentStep: savedStep,
-              elapsedMs: savedElapsed,
+              elapsedMs: wallClockElapsed,
               actionIntervals: savedDraft.actionIntervals.map((i) =>
-                i.endMs == null ? { ...i, endMs: savedElapsed || i.startMs } : i,
+                i.endMs == null ? { ...i, endMs: wallClockElapsed || i.startMs } : i,
               ),
             }
           : { ...savedDraft, currentStep: savedStep, elapsedMs: savedElapsed };
       setDraft(restoredDraft);
       setStep(restoredDraft.currentStep === "complete" ? "select" : restoredDraft.currentStep);
-      setElapsedBeforeResume(restoredDraft.elapsedMs || 0);
+      setElapsedBeforeResume(restoredDraft.currentStep === "live" ? wallClockElapsed : restoredDraft.elapsedMs || 0);
       if (restoredDraft.currentStep === "live") setMatchStartedAt(Date.now());
       setSaveStatus("Restored");
     }
@@ -310,11 +380,32 @@ export function App() {
     // kept for backward compat, no longer primary
   }
 
-  async function handleAutoGenerateShifts() {
+  async function handleAutoGenerateShifts(dayMatches?: ScheduledMatch[], dayMembers?: TeamMember[], dayLabel?: string) {
     if (!activeSchedule) return;
-    const shifts = autoGenerateShifts(activeSchedule, teamProfiles);
-    const { replaceShifts } = await import("./db");
-    await replaceShifts(activeSchedule.eventKey, shifts);
+    const sourceMatches = dayMatches ?? activeSchedule.matches.filter((match) => match.compLevel === "qm");
+    const members = dayMembers ?? teamProfiles;
+    const scopedSchedule: EventSchedule = {
+      ...activeSchedule,
+      matchCount: sourceMatches.length,
+      matches: sourceMatches,
+    };
+    const generated = autoGenerateShifts(scopedSchedule, members, {
+      namePrefix: dayLabel,
+    });
+
+    if (dayMatches) {
+      const selectedMatchNumbers = new Set(dayMatches.map((match) => match.matchNumber));
+      const preserved = scoutShifts.filter((shift) => {
+        if (shift.eventKey !== activeSchedule.eventKey) return false;
+        for (let matchNumber = shift.startMatch; matchNumber <= shift.endMatch; matchNumber += 1) {
+          if (selectedMatchNumbers.has(matchNumber)) return false;
+        }
+        return true;
+      });
+      await replaceShifts(activeSchedule.eventKey, [...preserved, ...generated]);
+    } else {
+      await replaceShifts(activeSchedule.eventKey, generated);
+    }
     await refreshShifts();
   }
 
@@ -401,11 +492,73 @@ export function App() {
     }));
   }
 
+  function beginScheduledRobot(match: ScheduledMatch, robot: ScheduledRobot) {
+    const next: MatchDraft = {
+      ...createEmptyDraft(),
+      currentStep: "prematch",
+      scouterName: profile?.display_name ?? draft.scouterName,
+      division: match.eventKey,
+      matchNumber: String(match.matchNumber),
+      teamNumber: robot.teamNumber,
+      alliance: robot.alliance,
+      station: robot.station,
+      practiceMode: false,
+    };
+    setDraft(next);
+    setStep("prematch");
+    setElapsedBeforeResume(0);
+    setMatchStartedAt(null);
+    void saveDraft(next).then(() => setSaveStatus("Saved"));
+  }
+
+  function beginAssignment(assignment: ScoutAssignment) {
+    const next: MatchDraft = {
+      ...createEmptyDraft(),
+      currentStep: "prematch",
+      scouterName: profile?.display_name ?? assignment.scouterName,
+      division: assignment.eventKey,
+      matchNumber: String(assignment.matchNumber),
+      teamNumber: assignment.teamNumber,
+      alliance: assignment.alliance,
+      station: assignment.station,
+      practiceMode: false,
+    };
+    setDraft(next);
+    setStep("prematch");
+    setElapsedBeforeResume(0);
+    setMatchStartedAt(null);
+    void saveDraft(next).then(() => setSaveStatus("Saved"));
+  }
+
   function updatePreMatch<K extends keyof MatchDraft["preMatch"]>(
     field: K,
     value: MatchDraft["preMatch"][K],
   ) {
     updateDraft((c) => ({ ...c, preMatch: { ...c.preMatch, [field]: value } }));
+  }
+
+  function updateRobotStatus(value: MatchDraft["preMatch"]["robotStatus"]) {
+    updateDraft((c) => ({
+      ...c,
+      preMatch: {
+        ...c.preMatch,
+        robotStatus: value,
+        startingPose: value === "not_present" ? "not_on_field" : c.preMatch.startingPose,
+      },
+    }));
+  }
+
+  function updateStartingPose(value: MatchDraft["preMatch"]["startingPose"]) {
+    updateDraft((c) => ({
+      ...c,
+      preMatch: {
+        ...c.preMatch,
+        startingPose: value,
+        robotStatus: c.preMatch.robotStatus === "not_present" && value !== "not_on_field"
+          ? "present"
+          : c.preMatch.robotStatus,
+      },
+    }));
   }
 
   function updatePostMatch<K extends keyof MatchDraft["postMatch"]>(
@@ -422,15 +575,16 @@ export function App() {
 
   function startMatch() {
     setStep("waiting");
-    updateDraft((c) => ({ ...c, currentStep: "waiting" }));
+    updateDraft((c) => ({ ...c, currentStep: "waiting", liveStartedAtUnixMs: null }));
   }
 
   function beginLiveMatch() {
+    const startedAt = Date.now();
     setElapsedBeforeResume(0);
-    setMatchStartedAt(Date.now());
-    setNow(Date.now());
+    setMatchStartedAt(startedAt);
+    setNow(startedAt);
     setStep("live");
-    updateDraft((c) => ({ ...c, currentStep: "live", elapsedMs: 0 }));
+    updateDraft((c) => ({ ...c, currentStep: "live", elapsedMs: 0, liveStartedAtUnixMs: startedAt }));
   }
 
   function stopMatch() {
@@ -439,7 +593,7 @@ export function App() {
     setElapsedBeforeResume(stoppedAt);
     setMatchStartedAt(null);
     setStep("postmatch");
-    updateDraft((c) => ({ ...c, currentStep: "postmatch", elapsedMs: stoppedAt }));
+    updateDraft((c) => ({ ...c, currentStep: "postmatch", elapsedMs: stoppedAt, liveStartedAtUnixMs: null }));
   }
 
   function startAction(action: ActionKey, event: React.PointerEvent<HTMLButtonElement>) {
@@ -562,14 +716,148 @@ export function App() {
     await refreshAssignments();
   }
 
+  async function seedFakeLiveEvent() {
+    if (!user) return;
+    const nowMs = Date.now();
+    const eventKey = "testlive";
+    const matchSpacingSeconds = 8 * 60;
+    const firstMatchStartSeconds = Math.floor((nowMs - 24 * 60_000) / 1000);
+    const secondDayStartSeconds = Math.floor((nowMs + 24 * 60 * 60_000 + 30 * 60_000) / 1000);
+    const teams = [
+      "9470", "1678", "1382", "1332", "5136", "254",
+      "4414", "971", "5940", "1323", "2910", "973",
+      "604", "118", "3005", "3476", "6328", "2056",
+      "589", "1986", "3310", "1114", "2468", "1690",
+      "2052", "4481", "364", "3847", "3538", "1538",
+    ];
+    const stations: ScheduledRobot["station"][] = ["red1", "red2", "red3", "blue1", "blue2", "blue3"];
+
+    const matches: ScheduledMatch[] = Array.from({ length: 24 }, (_, index) => {
+      const matchNumber = index + 1;
+      const dayOffset = matchNumber > 14 ? secondDayStartSeconds + (matchNumber - 15) * matchSpacingSeconds : firstMatchStartSeconds;
+      const lunchOffset = matchNumber >= 8 && matchNumber <= 14 ? 45 * 60 : 0;
+      const start = matchNumber > 14 ? dayOffset : firstMatchStartSeconds + index * matchSpacingSeconds + lunchOffset;
+      const robots: ScheduledRobot[] = stations.map((station, stationIndex) => ({
+        teamNumber: teams[(index * 6 + stationIndex) % teams.length],
+        alliance: station.startsWith("red") ? "red" : "blue",
+        station,
+      }));
+
+      return {
+        id: `${eventKey}_qm${matchNumber}`,
+        eventKey,
+        compLevel: "qm",
+        setNumber: 1,
+        matchNumber,
+        label: `Q${matchNumber}`,
+        scheduledTime: start,
+        predictedTime: start,
+        actualTime: matchNumber <= 3 ? start + 3 * 60 : null,
+        robots,
+      };
+    });
+
+    const schedule: EventSchedule = {
+      eventKey,
+      fetchedAt: new Date().toISOString(),
+      matchCount: matches.length,
+      matches,
+    };
+
+    const displayName = profile?.display_name ?? (draft.scouterName || "Test Scouter");
+    const currentUserId = user.id;
+    const shifts: ScoutShift[] = [
+      {
+        id: createId("shift"),
+        eventKey,
+        name: "Shift 1",
+        startMatch: 1,
+        endMatch: 7,
+        createdAt: new Date().toISOString(),
+        roster: stations.map((station, index) => ({
+          station,
+          userId: index === 0 ? currentUserId : `fake-user-${index}`,
+          displayName: index === 0 ? displayName : `Fake Scouter ${index + 1}`,
+          subs: [],
+        })),
+      },
+      {
+        id: createId("shift"),
+        eventKey,
+        name: "Shift 2",
+        startMatch: 8,
+        endMatch: 14,
+        createdAt: new Date().toISOString(),
+        roster: stations.map((station, index) => ({
+          station,
+          userId: index === 2 ? currentUserId : `fake-user-b-${index}`,
+          displayName: index === 2 ? displayName : `Fake Scouter ${index + 7}`,
+          subs: [],
+        })),
+      },
+      {
+        id: createId("shift"),
+        eventKey,
+        name: "Shift 3",
+        startMatch: 15,
+        endMatch: 18,
+        createdAt: new Date().toISOString(),
+        roster: stations.map((station, index) => ({
+          station,
+          userId: index === 4 ? currentUserId : `fake-user-c-${index}`,
+          displayName: index === 4 ? displayName : `Fake Scouter ${index + 13}`,
+          subs: [],
+        })),
+      },
+    ];
+    const assignments = generateAssignmentsFromShifts(shifts, schedule);
+
+    await saveEventSchedule(schedule);
+    await replaceShifts(eventKey, shifts);
+    await replaceScoutAssignments(eventKey, assignments);
+    setTbaEventKey(eventKey);
+    await refreshEventSchedules();
+    await refreshShifts();
+    await refreshAssignments();
+    setTbaStatus("Seeded fake live event");
+    setView("scout");
+    setStep("select");
+  }
+
   const marked = new Set(draft.eventMarks.map((m) => m.type));
 
   // Step indicator state
   const stepIndex = { select: 0, prematch: 1, waiting: 2, live: 2, postmatch: 3, complete: 4 }[step];
 
-  // Live countdown (counts down from 2:40 during live match)
-  const countdownRemainingMs = Math.max(0, MATCH_DURATION_MS - elapsedMs);
-  const matchExpired = step === "live" && countdownRemainingMs <= 0;
+  const matchPhase = (() => {
+    if (elapsedMs < AUTO_DURATION_MS) {
+      return {
+        key: "auto" as const,
+        label: "Auto",
+        remainingMs: AUTO_DURATION_MS - elapsedMs,
+      };
+    }
+    if (elapsedMs < AUTO_DURATION_MS + TRANSITION_DURATION_MS) {
+      return {
+        key: "transition" as const,
+        label: "Transition",
+        remainingMs: AUTO_DURATION_MS + TRANSITION_DURATION_MS - elapsedMs,
+      };
+    }
+    if (elapsedMs < MATCH_DURATION_MS) {
+      return {
+        key: "teleop" as const,
+        label: "Teleop",
+        remainingMs: MATCH_DURATION_MS - elapsedMs,
+      };
+    }
+    return {
+      key: "over" as const,
+      label: "Over",
+      remainingMs: 0,
+    };
+  })();
+  const matchExpired = step === "live" && matchPhase.key === "over";
 
   // Gate on auth — show login screen when not signed in
   if (authLoading) {
@@ -703,82 +991,32 @@ export function App() {
 
             {step === "select" && (
               <>
-                {/* ── Primary: Assignment Card ── */}
-                {nextAssignment ? (
-                  <section
-                    className={`panel assignment-hero ${nextAssignment.alliance}`}
-                    onClick={() => selectAssignment(nextAssignment)}
-                  >
-                    <div className="assignment-header">
-                      <span className="assignment-eyebrow">Your next match</span>
-                      {nexusState?.available && (() => {
-                        const eta = getMatchEtaMs(nexusState, nextAssignment.matchNumber);
-                        return eta ? (
-                          <span className="assignment-eta">Starts in {formatEta(eta)}</span>
-                        ) : null;
-                      })()}
-                    </div>
-                    <div className="assignment-main">
-                      <div>
-                        <h1 className="assignment-match">{nextAssignment.label}</h1>
-                        <span className="assignment-team">Team {nextAssignment.teamNumber}</span>
-                      </div>
-                      <div className="assignment-station">
-                        {nextAssignment.station.toUpperCase().replace(/(\d)/, " $1")}
-                      </div>
-                    </div>
-                    <div className="assignment-action">
-                      <IconChevronRight size={20} />
-                    </div>
-                  </section>
+                {activeSchedule ? (
+                  <MatchSelectionList
+                    eventKey={activeSchedule.eventKey}
+                    eventLabel={activeSchedule.eventKey.toUpperCase()}
+                    dayGroups={matchDayGroups}
+                    matches={qualificationMatches}
+                    assignments={scoutAssignments}
+                    shifts={scoutShifts}
+                    submissions={latest}
+                    userId={user.id}
+                    scouterName={profile?.display_name ?? draft.scouterName}
+                    nexusState={nexusState}
+                    onScoutRobot={beginScheduledRobot}
+                  />
                 ) : scoutAssignments.length > 0 ? (
                   <section className="panel">
                     <div className="empty" style={{ textAlign: "center", padding: 16 }}>
                       <IconCheckCircle size={28} style={{ color: "var(--green)", marginBottom: 8 }} />
-                      <p style={{ fontWeight: 700 }}>All caught up</p>
-                      <p className="muted small">No more assignments for you right now.</p>
+                      <p style={{ fontWeight: 700 }}>Assignments cached</p>
+                      <p className="muted small">Load the event schedule to use the match list.</p>
                     </div>
                   </section>
-                ) : null}
-
-                {/* ── Secondary: Schedule Quick-Pick ── */}
-                {activeSchedule && (
-                  <section className="panel schedule-picker">
-                    <div className="section-head">
-                      <div>
-                        <h2 style={{ fontSize: 15 }}>{activeSchedule.eventKey.toUpperCase()}</h2>
-                        <p className="muted small">{activeSchedule.matchCount} qual matches</p>
-                      </div>
-                    </div>
-
-                    <div className="match-chip-row">
-                      {previewMatches.map((match) => (
-                        <button
-                          key={match.id}
-                          className={`match-chip ${draft.matchNumber === String(match.matchNumber) ? "selected" : ""}`}
-                          onClick={() => selectScheduledMatch(match)}
-                        >
-                          {match.label}
-                        </button>
-                      ))}
-                    </div>
-
-                    {selectedScheduledMatch && (
-                      <div className="robot-grid top-space">
-                        {selectedScheduledMatch.robots.map((robot) => (
-                          <button
-                            key={`${selectedScheduledMatch.id}-${robot.station}`}
-                            className={`robot-pick ${robot.alliance} ${
-                              draft.teamNumber === robot.teamNumber ? "selected" : ""
-                            }`}
-                            onClick={() => selectScheduledRobot(selectedScheduledMatch, robot)}
-                          >
-                            <span>{robot.station.toUpperCase()}</span>
-                            <strong>{robot.teamNumber}</strong>
-                          </button>
-                        ))}
-                      </div>
-                    )}
+                ) : (
+                  <section className="panel">
+                    <h1>No schedule cached</h1>
+                    <p className="muted">Use Data to load the event once, then this screen works offline.</p>
                   </section>
                 )}
 
@@ -839,23 +1077,20 @@ export function App() {
                     <div className="field-map-container">
                       <img src="./field-map.png" alt="Field" className="field-map-img" />
                       <div className="field-map-zones">
-                        {["zone_1", "zone_2", "zone_3", "zone_4", "zone_5"].map((zone, i) => (
+                        {STARTING_POSE_ZONES.map((zone) => (
                           <button
-                            className={`zone ${draft.preMatch.startingPose === zone ? "selected" : ""}`}
-                            key={zone}
-                            onClick={() => updatePreMatch("startingPose", zone)}
+                            className={`zone ${zone.className} ${draft.preMatch.startingPose === zone.id ? "selected" : ""}`}
+                            key={zone.id}
+                            onClick={() => updateStartingPose(zone.id)}
                           >
-                            Z{i + 1}
+                            {zone.label}
                           </button>
                         ))}
                       </div>
                     </div>
                     <div className="button-row">
-                      <Choice selected={draft.preMatch.startingPose === "unknown"} onClick={() => updatePreMatch("startingPose", "unknown")}>
-                        Unknown
-                      </Choice>
-                      <Choice selected={draft.preMatch.startingPose === "not_on_field"} onClick={() => updatePreMatch("startingPose", "not_on_field")}>
-                        Not on field
+                      <Choice selected={draft.preMatch.startingPose === "unknown"} onClick={() => updateStartingPose("unknown")}>
+                        Pose unknown
                       </Choice>
                     </div>
                   </div>
@@ -865,15 +1100,14 @@ export function App() {
                       ["present", "Present"],
                       ["not_present", "Not present"],
                       ["problem_visible", "Problem visible"],
-                      ["unknown", "Unknown"],
                     ]}
                     value={draft.preMatch.robotStatus}
-                    onChange={(v) => updatePreMatch("robotStatus", v)}
+                    onChange={(v) => updateRobotStatus(v)}
                   />
                   <div className="button-row">
                     <button className="button ghost" onClick={() => goTo("select")}>Back</button>
                     <button className="button primary" style={{ marginLeft: "auto" }} onClick={startMatch}>
-                      Start Match
+                      Ready for Match
                     </button>
                   </div>
                 </div>
@@ -890,8 +1124,8 @@ export function App() {
               >
                 <div className="waiting-screen">
                   <span className="waiting-label">Ready</span>
-                  <div className="countdown running">2:40</div>
-                  <p className="muted">Tap anywhere to start the match timer</p>
+                  <div className="countdown running">Auto 0:20</div>
+                  <p className="muted">Tap when the match starts</p>
                 </div>
               </section>
             )}
@@ -900,7 +1134,7 @@ export function App() {
               <LiveMatch
                 draft={draft}
                 elapsedMs={elapsedMs}
-                countdownRemainingMs={countdownRemainingMs}
+                matchPhase={matchPhase}
                 matchExpired={matchExpired}
                 activeAction={activeAction}
                 marked={marked}
@@ -948,11 +1182,14 @@ export function App() {
                     <button
                       className="button primary"
                       onClick={() => {
+                        if (nextAssignment) {
+                          beginAssignment(nextAssignment);
+                          return;
+                        }
                         const newDraft = createEmptyDraft();
                         setDraft(newDraft);
                         setStep("select");
                         setSaveStatus("Ready");
-                        if (nextAssignment) selectAssignment(nextAssignment);
                       }}
                     >
                       {nextAssignment ? "Scout Next Assignment" : "Scout Next"}
@@ -986,7 +1223,7 @@ export function App() {
             shifts={scoutShifts}
             assignments={scoutAssignments}
             submissions={latest}
-            onAutoGenerate={() => { void handleAutoGenerateShifts(); }}
+            onAutoGenerate={(matches, members, dayLabel) => { void handleAutoGenerateShifts(matches, members, dayLabel); }}
             onSaveShift={(s) => { void handleSaveShift(s); }}
             onDeleteShift={(id) => { void handleDeleteShift(id); }}
             onUpdateShifts={(s) => { void handleUpdateShifts(s); }}
@@ -1009,6 +1246,7 @@ export function App() {
             syncSupabase={() => { void syncSupabaseNow(); }}
             exportJson={exportJson}
             importJson={importJson}
+            seedTestEvent={import.meta.env.DEV ? () => { void seedFakeLiveEvent(); } : undefined}
           />
         )}
       </main>

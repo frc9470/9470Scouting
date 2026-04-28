@@ -1,13 +1,14 @@
 import { ACTIONS, INCAP_STATUSES } from "../constants";
 import { formatMatchTime } from "../domain";
 import { IconRotateCcw } from "../icons";
+import { AutoPrompts } from "./AutoPrompts";
 import { OptionGroup } from "./Input";
 import type { ActionKey, MatchDraft } from "../types";
 
 export function LiveMatch({
   draft,
   elapsedMs,
-  countdownRemainingMs,
+  matchPhase,
   matchExpired,
   activeAction,
   marked,
@@ -20,7 +21,11 @@ export function LiveMatch({
 }: {
   draft: MatchDraft;
   elapsedMs: number;
-  countdownRemainingMs: number;
+  matchPhase: {
+    key: "auto" | "transition" | "teleop" | "over";
+    label: string;
+    remainingMs: number;
+  };
   matchExpired: boolean;
   activeAction: ActionKey;
   marked: Set<string>;
@@ -35,8 +40,11 @@ export function LiveMatch({
     <section className="panel live-layout">
       <div className="live-head">
         <div>
-          <div className={`timer ${matchExpired ? "timer-expired" : ""}`}>
-            {formatMatchTime(countdownRemainingMs)}
+          <div className={`phase-label phase-${matchPhase.key}`}>
+            {matchPhase.label}
+          </div>
+          <div className={`timer phase-${matchPhase.key} ${matchExpired ? "timer-expired" : ""}`}>
+            {formatMatchTime(matchPhase.remainingMs)}
           </div>
         </div>
         <div className="button-row">
@@ -53,6 +61,15 @@ export function LiveMatch({
         <div className="notice" style={{ justifyContent: "center", textAlign: "center" }}>
           Match time elapsed — end match when ready
         </div>
+      )}
+
+      {matchPhase.key === "transition" && (
+        <section className="transition-prompts">
+          <div className="notice" style={{ justifyContent: "center", textAlign: "center" }}>
+            Auto ended — teleop starts in {formatMatchTime(matchPhase.remainingMs)}
+          </div>
+          <AutoPrompts draft={draft} updateDraft={updateDraft} compact />
+        </section>
       )}
 
       <div className="action-grid">
