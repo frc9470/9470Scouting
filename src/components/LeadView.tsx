@@ -1,167 +1,322 @@
-import {
-  coveredAssignmentIds,
-  duplicateSubmissionKeys,
-  missingAssignments,
-} from "../assignments";
-import { IconCheck, IconFlag } from "../icons";
+import React, { useState } from "react";
+import { calculateWorkload, coveredAssignmentIds } from "../assignments";
+import { IconAlertTriangle, IconFlag, IconGraduationCap, IconUser, IconZap } from "../icons";
 import { Metric } from "./Input";
-import type { EventSchedule, MatchSubmission, ScoutAssignment, ScouterProfile } from "../types";
+import { ShiftCard } from "./ShiftCard";
+import { SubSheet } from "./SubSheet";
+import type {
+  EventSchedule,
+  MemberGroup,
+  MatchSubmission,
+  ScoutAssignment,
+  ScoutShift,
+  ShiftSlot,
+  StationType,
+  SubOverride,
+  TeamMember,
+} from "../types";
 
 export function LeadView({
   activeSchedule,
-  scouters,
+  profiles,
+  shifts,
   assignments,
   submissions,
-  newScouterName,
-  setNewScouterName,
-  addScouter,
-  removeScouter,
-  generateAssignments,
+  onAutoGenerate,
+  onSaveShift,
+  onDeleteShift,
+  onUpdateShifts,
+  onGenerateAndPush,
+  onChangeGroup,
+  onChangeRole,
 }: {
   activeSchedule: EventSchedule | null;
-  scouters: ScouterProfile[];
+  profiles: TeamMember[];
+  shifts: ScoutShift[];
   assignments: ScoutAssignment[];
   submissions: MatchSubmission[];
-  newScouterName: string;
-  setNewScouterName: (name: string) => void;
-  addScouter: () => void;
-  removeScouter: (id: string) => void;
-  generateAssignments: () => void;
+  onAutoGenerate: () => void;
+  onSaveShift: (shift: ScoutShift) => void;
+  onDeleteShift: (id: string) => void;
+  onUpdateShifts: (shifts: ScoutShift[]) => void;
+  onGenerateAndPush: () => void;
+  onChangeGroup: (userId: string, group: MemberGroup | null) => void;
+  onChangeRole: (userId: string, role: "scouter" | "lead") => void;
 }) {
+  const [activeSlot, setActiveSlot] = useState<{ shift: ScoutShift; slot: ShiftSlot } | null>(null);
+  const [editingShiftId, setEditingShiftId] = useState<string | null>(null);
+  const [showRoster, setShowRoster] = useState(false);
+
   const covered = coveredAssignmentIds(assignments, submissions);
-  const missing = missingAssignments(assignments, submissions);
-  const duplicates = duplicateSubmissionKeys(submissions);
-  const activeScouters = scouters.filter((scouter) => scouter.active);
-  const workload = activeScouters.map((scouter) => ({
-    scouter,
-    count: assignments.filter((assignment) => assignment.scouterId === scouter.id).length,
-  }));
+  const totalAssignments = assignments.length;
+  const coveragePct = totalAssignments > 0 ? Math.round((covered.size / totalAssignments) * 100) : 0;
+
+  // Workload from shifts
+  const workload = calculateWorkload(shifts);
+  const students = profiles.filter((p) => p.group === "student");
+  const parents = profiles.filter((p) => p.group === "parent");
+  const unset = profiles.filter((p) => !p.group);
+
+  const studentAvg =
+    students.length > 0
+      ? Math.round(students.reduce((t, s) => t + (workload.get(s.id)?.matches ?? 0), 0) / students.length)
+      : 0;
+  const parentAvg =
+    parents.length > 0
+      ? Math.round(parents.reduce((t, p) => t + (workload.get(p.id)?.matches ?? 0), 0) / parents.length)
+      : 0;
+
+  // Detect gaps
+  const qualCount = activeSchedule
+    ? activeSchedule.matches.filter((m) => m.compLevel === "qm").length
+    : 0;
+  const coveredMatches = new Set<number>();
+  for (const shift of shifts) {
+    for (let m = shift.startMatch; m <= shift.endMatch; m++) coveredMatches.add(m);
+  }
+  const firstMatch = activeSchedule
+    ? Math.min(...activeSchedule.matches.filter((m) => m.compLevel === "qm").map((m) => m.matchNumber))
+    : 1;
+  const lastMatch = activeSchedule
+    ? Math.max(...activeSchedule.matches.filter((m) => m.compLevel === "qm").map((m) => m.matchNumber))
+    : 0;
+  const gaps: { start: number; end: number }[] = [];
+  let gapStart: number | null = null;
+  for (let m = firstMatch; m <= lastMatch; m++) {
+    if (!coveredMatches.has(m)) {
+      if (gapStart == null) gapStart = m;
+    } else if (gapStart != null) {
+      gaps.push({ start: gapStart, end: m - 1 });
+      gapStart = null;
+    }
+  }
+  if (gapStart != null) gaps.push({ start: gapStart, end: lastMatch });
+
+  // Sub sheet handlers
+  function handleAddSub(shiftId: string, station: StationType, sub: SubOverride) {
+    const updated = shifts.map((s) => {
+      if (s.id !== shiftId) return s;
+      return {
+        ...s,
+        roster: s.roster.map((slot) => {
+          if (slot.station !== station) return slot;
+          return { ...slot, subs: [...slot.subs, sub] };
+        }),
+      };
+    });
+    onUpdateShifts(updated);
+  }
+
+  function handleRemoveSub(shiftId: string, station: StationType, subId: string) {
+    const updated = shifts.map((s) => {
+      if (s.id !== shiftId) return s;
+      return {
+        ...s,
+        roster: s.roster.map((slot) => {
+          if (slot.station !== station) return slot;
+          return { ...slot, subs: slot.subs.filter((sub) => sub.id !== subId) };
+        }),
+      };
+    });
+    onUpdateShifts(updated);
+  }
+
+  function handleChangeSlotMember(shiftId: string, station: StationType, member: TeamMember) {
+    const updated = shifts.map((s) => {
+      if (s.id !== shiftId) return s;
+      return {
+        ...s,
+        roster: s.roster.map((slot) => {
+          if (slot.station !== station) return slot;
+          return { ...slot, userId: member.id, displayName: member.display_name };
+        }),
+      };
+    });
+    onUpdateShifts(updated);
+    setActiveSlot(null);
+  }
+
+  function renderWorkloadChips(members: TeamMember[], label: string, avg: number, icon: React.ReactNode) {
+    if (members.length === 0) return null;
+    return (
+      <>
+        <h3>
+          {icon && <>{icon}{" "}</>}{label} ({members.length})
+          <span>avg {avg}m</span>
+        </h3>
+        <div className="workload-chips">
+          {members.map((m) => {
+            const wl = workload.get(m.id);
+            const matches = wl?.matches ?? 0;
+            const isHeavy = avg > 0 && matches > avg * 1.5;
+            return (
+              <div className={`workload-chip ${isHeavy ? "heavy" : ""} ${matches === 0 ? "none" : ""}`} key={m.id}>
+                <span>{m.display_name}</span>
+                <span className="wl-count">{matches}</span>
+              </div>
+            );
+          })}
+        </div>
+      </>
+    );
+  }
 
   return (
     <div className="grid">
+      {/* Header + Coverage */}
       <section className="panel">
         <h1>Lead</h1>
-        <p className="muted">Build local scouter assignments from the loaded TBA schedule.</p>
-        <div className="metric-grid">
-          <Metric label="Scouters" value={activeScouters.length} />
-          <Metric label="Assignments" value={assignments.length} />
-          <Metric label="Covered" value={covered.size} />
-          <Metric label="Missing" value={missing.length} />
-        </div>
-      </section>
-
-      <section className="panel">
-        <div className="section-head">
-          <h2>Scouters</h2>
-          <span className="muted small">{activeScouters.length} active</span>
-        </div>
-        <div className="inline-form">
-          <label className="field">
-            <span>Name</span>
-            <input
-              value={newScouterName}
-              placeholder="Add scouter"
-              onChange={(event) => setNewScouterName(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") addScouter();
-              }}
-            />
-          </label>
-          <button className="button primary" onClick={addScouter}>Add</button>
-        </div>
-        {scouters.length > 0 ? (
-          <div className="scouter-list top-space">
-            {scouters.map((scouter) => (
-              <div className="scouter-row" key={scouter.id}>
-                <span>{scouter.name}</span>
-                <button className="link-button" onClick={() => removeScouter(scouter.id)}>
-                  Remove
-                </button>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="empty top-space">Add scouters before generating assignments.</div>
+        <p className="muted">
+          {activeSchedule
+            ? `${activeSchedule.eventKey.toUpperCase()} · ${qualCount} qual matches`
+            : "Load a TBA schedule first"}
+        </p>
+        {totalAssignments > 0 && (
+          <>
+            <div className="metric-grid" style={{ marginTop: 10 }}>
+              <Metric label="Assigned" value={totalAssignments} />
+              <Metric label="Covered" value={covered.size} />
+              <Metric label="Shifts" value={shifts.length} />
+              <Metric label="Coverage" value={`${coveragePct}%`} />
+            </div>
+            <div className="coverage-bar-track">
+              <div className="coverage-bar-fill" style={{ width: `${coveragePct}%` }} />
+            </div>
+          </>
         )}
       </section>
 
-      <section className="panel">
-        <div className="section-head">
-          <div>
-            <h2>Assignments</h2>
-            <p className="muted">
-              {activeSchedule
-                ? `${activeSchedule.eventKey.toUpperCase()} qualification schedule`
-                : "Load a TBA schedule first"}
-            </p>
+      {/* Workload */}
+      {shifts.length > 0 && (
+        <section className="panel">
+          <div className="section-head">
+            <h2>Workload</h2>
           </div>
-          <button className="button primary" onClick={generateAssignments} disabled={!activeSchedule || activeScouters.length === 0}>
-            <IconFlag size={16} /> Generate
+          <div className="workload-section">
+            {renderWorkloadChips(students, "Students", studentAvg, <IconGraduationCap size={14} />)}
+            {renderWorkloadChips(parents, "Parents", parentAvg, <IconUser size={14} />)}
+            {unset.length > 0 && renderWorkloadChips(unset, "Unset Group", 0, null)}
+          </div>
+        </section>
+      )}
+
+      {/* Actions */}
+      <section className="panel">
+        <div className="button-row">
+          <button
+            className="button primary"
+            onClick={onAutoGenerate}
+            disabled={!activeSchedule || profiles.length === 0}
+          >
+            <IconZap size={16} /> Auto-Generate Shifts
+          </button>
+          <button
+            className="button ghost"
+            onClick={() => setShowRoster(!showRoster)}
+          >
+            {showRoster ? "Hide Roster" : "Roster"}
           </button>
         </div>
-
-        {workload.length > 0 && (
-          <div className="workload-grid">
-            {workload.map(({ scouter, count }) => (
-              <div className="workload-pill" key={scouter.id}>
-                <span>{scouter.name}</span>
-                <strong>{count}</strong>
-              </div>
-            ))}
+        {shifts.length > 0 && (
+          <div className="button-row" style={{ marginTop: 8 }}>
+            <button className="button primary" onClick={onGenerateAndPush}>
+              <IconFlag size={16} /> Generate & Push
+            </button>
           </div>
-        )}
-
-        {assignments.length > 0 ? (
-          <div className="assignment-list top-space">
-            {assignments.slice(0, 18).map((assignment) => (
-              <article className={`assignment-row ${assignment.alliance}`} key={assignment.id}>
-                <div>
-                  <strong>{assignment.label} · {assignment.station.toUpperCase()}</strong>
-                  <span className="muted small">Team {assignment.teamNumber} · {assignment.scouterName}</span>
-                </div>
-                {covered.has(assignment.id) && <IconCheck size={18} />}
-              </article>
-            ))}
-          </div>
-        ) : (
-          <div className="empty top-space">No assignments generated yet.</div>
         )}
       </section>
 
-      {(missing.length > 0 || duplicates.length > 0) && (
+      {/* Roster (collapsible) */}
+      {showRoster && (
         <section className="panel">
-          <h2>Coverage Exceptions</h2>
-          {missing.length > 0 && (
-            <div className="exception-block">
-              <h3>Missing</h3>
-              <div className="assignment-list">
-                {missing.slice(0, 12).map((assignment) => (
-                  <article className={`assignment-row ${assignment.alliance}`} key={assignment.id}>
-                    <div>
-                      <strong>{assignment.label} · Team {assignment.teamNumber}</strong>
-                      <span className="muted small">{assignment.station.toUpperCase()} · {assignment.scouterName}</span>
-                    </div>
-                  </article>
-                ))}
-              </div>
+          <div className="section-head">
+            <h2>Team Roster</h2>
+            <span className="muted small">{profiles.length} registered</span>
+          </div>
+          {profiles.length > 0 ? (
+            <div className="scouter-list top-space">
+              {profiles.map((p) => (
+                <div className="roster-row" key={p.id}>
+                  {p.avatar_url ? (
+                    <img src={p.avatar_url} alt="" className="scouter-avatar" referrerPolicy="no-referrer" />
+                  ) : (
+                    <div className="scouter-avatar placeholder"><IconUser size={16} /></div>
+                  )}
+                  <div className="roster-name">
+                    <span>{p.display_name}</span>
+                  </div>
+                  <div className="roster-pills">
+                    <button
+                      className={`roster-pill ${p.group === "student" ? "active student" : p.group === "parent" ? "active parent" : ""}`}
+                      onClick={() => {
+                        const next = p.group === "student" ? "parent" : p.group === "parent" ? null : "student";
+                        onChangeGroup(p.id, next as MemberGroup | null);
+                      }}
+                    >
+                      {p.group === "student" ? <><IconGraduationCap size={12} /> Student</> :
+                       p.group === "parent" ? <><IconUser size={12} /> Parent</> :
+                       "Set group"}
+                    </button>
+                    <button
+                      className={`roster-pill role ${p.role === "lead" ? "active lead" : ""}`}
+                      onClick={() => onChangeRole(p.id, p.role === "lead" ? "scouter" : "lead")}
+                    >
+                      {p.role === "lead" ? "★ Lead" : "Scouter"}
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
-          )}
-          {duplicates.length > 0 && (
-            <div className="exception-block">
-              <h3>Duplicates</h3>
-              <div className="assignment-list">
-                {duplicates.map((duplicate) => (
-                  <article className="assignment-row" key={`${duplicate.matchNumber}-${duplicate.teamNumber}`}>
-                    <div>
-                      <strong>Q{duplicate.matchNumber} · Team {duplicate.teamNumber}</strong>
-                      <span className="muted small">{duplicate.count} submissions</span>
-                    </div>
-                  </article>
-                ))}
-              </div>
+          ) : (
+            <div className="empty top-space">
+              No team members registered yet. Have scouters sign in with Google.
             </div>
           )}
         </section>
+      )}
+
+      {/* Gap warnings */}
+      {gaps.map((gap) => (
+        <div className="gap-warning" key={`${gap.start}-${gap.end}`}>
+          <IconAlertTriangle size={16} /> Q{gap.start}–Q{gap.end} have no shift assigned
+        </div>
+      ))}
+
+      {/* Shift Cards */}
+      {shifts.map((shift) => (
+        <ShiftCard
+          key={shift.id}
+          shift={shift}
+          profiles={profiles}
+          onSlotClick={(s, slot) => setActiveSlot({ shift: s, slot })}
+          onEdit={(s) => setEditingShiftId(s.id)}
+          onDelete={onDeleteShift}
+        />
+      ))}
+
+      {shifts.length === 0 && activeSchedule && (
+        <section className="panel">
+          <div className="empty" style={{ textAlign: "center", padding: 20 }}>
+            <p>No shifts created yet.</p>
+            <p className="muted small">
+              Tap "⚡ Auto-Generate" to create balanced shifts,
+              <br />or manually add shifts.
+            </p>
+          </div>
+        </section>
+      )}
+
+      {/* Sub Sheet */}
+      {activeSlot && (
+        <SubSheet
+          shift={activeSlot.shift}
+          slot={activeSlot.slot}
+          availableMembers={profiles}
+          onAddSub={handleAddSub}
+          onRemoveSub={handleRemoveSub}
+          onChangeSlotMember={handleChangeSlotMember}
+          onClose={() => setActiveSlot(null)}
+        />
       )}
     </div>
   );

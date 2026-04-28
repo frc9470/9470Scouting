@@ -6,14 +6,24 @@ function badRequest(res, message) {
   res.end(message);
 }
 
-module.exports = async function handler(req, res) {
+export default async function handler(req, res) {
   const authKey = process.env.TBA_AUTH_KEY || process.env.TBA_API_KEY;
   if (!authKey) {
     badRequest(res, "Missing TBA_AUTH_KEY or TBA_API_KEY.");
     return;
   }
 
-  const rawPath = Array.isArray(req.query.path) ? req.query.path.join("/") : req.query.path;
+  // Support both Vercel's catch-all path param and URL path parsing
+  let rawPath = Array.isArray(req.query?.path)
+    ? req.query.path.join("/")
+    : req.query?.path;
+
+  // Fallback: parse from URL if query param is missing
+  if (!rawPath) {
+    const url = new URL(req.url, `http://${req.headers.host}`);
+    rawPath = url.pathname.replace(/^\/api\/tba\/?/, "");
+  }
+
   if (!rawPath || rawPath.includes("..")) {
     badRequest(res, "Invalid TBA path.");
     return;
@@ -31,4 +41,4 @@ module.exports = async function handler(req, res) {
   res.setHeader("Content-Type", upstream.headers.get("content-type") || "application/json");
   res.setHeader("Cache-Control", "s-maxage=300, stale-while-revalidate=1800");
   res.end(body);
-};
+}

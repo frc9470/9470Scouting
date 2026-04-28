@@ -4,10 +4,10 @@ Offline-first scouting web app for Team 9470's Championship scouting workflow.
 
 ## Stack
 
-- Vite
-- React
-- TypeScript
+- Vite + React + TypeScript
 - Dexie / IndexedDB for local durable storage
+- Supabase (Auth, Postgres, Realtime sync)
+- Vercel (hosting + serverless TBA proxy)
 
 ## Local Development
 
@@ -16,56 +16,73 @@ npm install
 npm run dev
 ```
 
-Open the local URL printed by Vite. On the same WiFi network, phones can usually use the `Network` URL.
+Open the local URL printed by Vite. On the same WiFi network, phones can use the `Network` URL.
 
-For TBA schedule import, create `.env.local` with either:
+Create `.env.local` with:
 
 ```bash
 TBA_AUTH_KEY=your_tba_key
+VITE_SUPABASE_URL=your_project_url
+VITE_SUPABASE_ANON_KEY=your_anon_key
 ```
 
-`TBA_API_KEY` is also accepted for compatibility with other 9470 projects.
+## Deployment (Vercel)
 
-## Build
+The app deploys to Vercel automatically on push to `main`.
 
-```bash
-npm run build
+### Environment Variables
+
+Set these in the Vercel dashboard → Settings → Environment Variables:
+
+| Variable | Scope | Purpose |
+|---|---|---|
+| `TBA_AUTH_KEY` | Server only | Proxied to The Blue Alliance API — never exposed to client |
+| `VITE_SUPABASE_URL` | Client (build-time) | Supabase project URL |
+| `VITE_SUPABASE_ANON_KEY` | Client (build-time) | Supabase anon key (RLS-gated, safe to expose) |
+
+### Supabase Auth Setup
+
+For Google OAuth to work in production:
+
+1. Go to **Supabase Dashboard → Authentication → URL Configuration**
+2. Set **Site URL** to your Vercel production URL
+3. Add these **Redirect URLs**:
+   - `https://your-app.vercel.app`
+   - `https://your-app.vercel.app/**`
+   - `http://localhost:5173` (for local dev)
+
+### Supabase Schema
+
+Run these SQL files in the Supabase SQL editor (in order):
+
+1. `supabase/schema.sql` — match submissions table
+2. `supabase/profiles.sql` — user profiles with role/group
+3. `supabase/assignments.sql` — scout assignments
+4. `supabase/event_schedules.sql` — cached event schedules
+5. `supabase/shifts.sql` — scout shift rotations
+
+### Architecture
+
+```
+Browser (SPA)
+├── React UI
+├── Dexie/IndexedDB (offline-first local storage)
+├── Supabase client (auth, data sync)
+└── /api/tba/* → Vercel serverless → The Blue Alliance API
 ```
 
-The static app is written to `dist/`.
+The TBA proxy (`api/tba/[...path].js`) keeps the API key server-side. The Vite dev server proxies the same route locally.
 
-## Deployment
+## Features
 
-### Vercel
-
-Vercel should auto-detect Vite.
-
-- Build command: `npm run build`
-- Output directory: `dist`
-- Add `TBA_AUTH_KEY` or `TBA_API_KEY` as an environment variable for schedule import.
-
-### GitHub Pages
-
-The included GitHub Actions workflow builds the app and publishes `dist/` to Pages.
-
-In the GitHub repo settings:
-
-- Go to Pages
-- Set source to GitHub Actions
-
-GitHub Pages remains valid for offline scouting, manual entry, and JSON import/export. TBA schedule import needs the Vercel/local proxy so the key is not exposed in the browser.
-
-## Current MVP
-
-- Stage-based match scouting flow
-- Portrait-first mobile UI
-- Hold-based live action buttons
+- Stage-based match scouting flow (setup → auto → teleop → endgame → review)
+- Portrait-first mobile UI with hold-based live action buttons
 - Local autosave to IndexedDB
 - TBA event schedule import
-- Local scouter roster and generated match assignments
-- Assignment-aware next-match selection
-- Match submission queue
+- Role-based team roster (scouter / lead) with Google OAuth
+- Shift-based scouter assignment generation
+- Real-time Supabase sync for submissions, assignments, schedules, and shifts
 - JSON export/import fallback
-- Basic strategy dashboard aggregation
+- Strategy dashboard with per-team aggregation
 
-Live backend sync is intentionally not wired yet. The local storage and export/import path is the reliability foundation.
+Live backend sync is opportunistic. Local storage and export/import remain the reliability foundation.

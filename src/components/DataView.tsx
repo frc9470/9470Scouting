@@ -6,8 +6,11 @@ export function DataView({
   schedules,
   tbaEventKey,
   tbaStatus,
+  supabaseConfigured,
+  supabaseStatus,
   setTbaEventKey,
   fetchTbaSchedule,
+  syncSupabase,
   exportJson,
   importJson,
 }: {
@@ -15,12 +18,16 @@ export function DataView({
   schedules: EventSchedule[];
   tbaEventKey: string;
   tbaStatus: string;
+  supabaseConfigured: boolean;
+  supabaseStatus: string;
   setTbaEventKey: (eventKey: string) => void;
   fetchTbaSchedule: () => void;
+  syncSupabase: () => void;
   exportJson: () => void;
   importJson: (file: File) => void;
 }) {
   const pending = submissions.filter((s) => s.syncStatus !== "synced").length;
+  const failed = submissions.filter((s) => s.syncStatus === "failed").length;
   const latestSchedule = schedules[0];
 
   return (
@@ -73,17 +80,39 @@ export function DataView({
       </section>
 
       <section className="panel data-card">
+        <h2>Supabase</h2>
+        <p className="muted">
+          Opportunistic backend sync. Local save still happens first.
+        </p>
+        <div className="button-row">
+          <button className="button primary" onClick={syncSupabase} disabled={!supabaseConfigured}>
+            <IconDatabase size={16} /> Sync Now
+          </button>
+          <span className="sync-message">{supabaseStatus}</span>
+        </div>
+        {!supabaseConfigured && (
+          <p className="muted small">
+            Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to enable sync.
+          </p>
+        )}
+      </section>
+
+      <section className="panel data-card">
         <h2>Sync Status</h2>
         <div className="data-stat">
           <span className="muted">Pending sync</span>
           <strong>{pending}</strong>
         </div>
         <div className="data-stat">
+          <span className="muted">Failed sync</span>
+          <strong>{failed}</strong>
+        </div>
+        <div className="data-stat">
           <span className="muted">Total records</span>
           <strong>{submissions.length}</strong>
         </div>
         <p className="muted small">
-          Backend sync adapter is isolated. Local save and export/import are the reliable layer.
+          Supabase sync is isolated. JSON export/import remains the fallback.
         </p>
       </section>
     </div>

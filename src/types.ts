@@ -2,6 +2,9 @@ export type Alliance = "red" | "blue" | "unknown";
 export type MatchStep = "select" | "prematch" | "waiting" | "live" | "postmatch" | "complete";
 export type View = "scout" | "lead" | "dashboard" | "data";
 export type ScheduleAlliance = Exclude<Alliance, "unknown">;
+export type SyncIndicator = "idle" | "syncing" | "synced" | "pending" | "error";
+export type MemberGroup = "student" | "parent";
+export type StationType = "red1" | "red2" | "red3" | "blue1" | "blue2" | "blue3";
 
 export type ActionKey =
   | "driving"
@@ -145,6 +148,45 @@ export interface ScoutAssignment {
   station: ScheduledRobot["station"];
   scouterId: string;
   scouterName: string;
+  userId: string | null;
+  createdAt: string;
+}
+
+/** Supabase profile row — mirrors public.profiles columns. */
+export interface TeamMember {
+  id: string;
+  display_name: string;
+  email: string | null;
+  avatar_url: string | null;
+  role: "scouter" | "lead" | "admin";
+  group: MemberGroup | null;
+}
+
+// ── Shift Model ─────────────────────────────────────────────
+
+export interface SubOverride {
+  id: string;
+  startMatch: number;
+  endMatch: number;
+  userId: string;
+  displayName: string;
+  reason: "break" | "pit" | "our_match" | "other" | "";
+}
+
+export interface ShiftSlot {
+  station: StationType;
+  userId: string;
+  displayName: string;
+  subs: SubOverride[];
+}
+
+export interface ScoutShift {
+  id: string;
+  eventKey: string;
+  name: string;
+  startMatch: number;
+  endMatch: number;
+  roster: ShiftSlot[];
   createdAt: string;
 }
 

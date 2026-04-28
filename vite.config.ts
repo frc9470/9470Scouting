@@ -4,9 +4,10 @@ import react from "@vitejs/plugin-react";
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
   const tbaAuthKey = env.TBA_AUTH_KEY || env.TBA_API_KEY;
+  const nexusApiKey = env.NEXUS_API_KEY;
 
   return {
-    base: "./",
+    base: "/",
     plugins: [react()],
     server: {
       proxy: {
@@ -15,6 +16,12 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           rewrite: (path) => path.replace(/^\/api\/tba/, "/api/v3"),
           headers: tbaAuthKey ? { "X-TBA-Auth-Key": tbaAuthKey } : undefined,
+        },
+        "/api/nexus": {
+          target: "https://frc.nexus",
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/api\/nexus/, "/api/v1"),
+          headers: nexusApiKey ? { "Nexus-Api-Key": nexusApiKey } : undefined,
         },
       },
     },

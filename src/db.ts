@@ -6,6 +6,7 @@ import type {
   MatchSubmission,
   ScoutAssignment,
   ScouterProfile,
+  ScoutShift,
   SyncQueueItem,
 } from "./types";
 import { createId, getDeviceId } from "./domain";
@@ -18,6 +19,7 @@ class ScoutingDatabase extends Dexie {
   eventSchedules!: Table<EventSchedule, string>;
   scouterProfiles!: Table<ScouterProfile, string>;
   scoutAssignments!: Table<ScoutAssignment, string>;
+  scoutShifts!: Table<ScoutShift, string>;
 
   constructor() {
     super("team-9470-scouting");
@@ -40,6 +42,15 @@ class ScoutingDatabase extends Dexie {
       scouterProfiles: "id, name, active, createdAt",
       scoutAssignments: "id, eventKey, matchNumber, teamNumber, scouterId, scouterName",
     });
+    this.version(4).stores({
+      matchDrafts: "id, matchNumber, teamNumber, updatedAt",
+      matchSubmissions: "id, teamNumber, matchNumber, syncStatus, submittedAt",
+      syncQueue: "id, status, recordType, recordId, createdAt",
+      eventSchedules: "eventKey, fetchedAt",
+      scouterProfiles: "id, name, active, createdAt",
+      scoutAssignments: "id, eventKey, matchNumber, teamNumber, scouterId, scouterName",
+      scoutShifts: "id, eventKey, startMatch, endMatch",
+    });
   }
 }
 
@@ -60,6 +71,10 @@ export async function listSubmissions() {
   return db.matchSubmissions.orderBy("submittedAt").reverse().toArray();
 }
 
+export async function listPendingSubmissions() {
+  return db.matchSubmissions.where("syncStatus").equals("pending").toArray();
+}
+
 export async function getLatestDraft() {
   return db.matchDrafts.orderBy("updatedAt").last();
 }
@@ -75,6 +90,53 @@ export async function saveSubmission(submission: MatchSubmission) {
       createdAt: new Date().toISOString(),
     });
   });
+}
+
+export async function saveSyncedSubmissions(submissions: MatchSubmission[]) {
+  if (submissions.length === 0) return;
+  await db.matchSubmissions.bulkPut(
+    submissions.map((submission) => ({
+      ...submission,
+      syncStatus: "synced" as const,
+    })),
+  );
+}
+
+export async function markSubmissionSynced(id: string) {
+  await db.transaction("rw", db.matchSubmissions, db.syncQueue, async () => {
+    await db.matchSubmissions.update(id, { syncStatus: "synced" });
+    const queueItems = await db.syncQueue.where("recordId").equals(id).toArray();
+    await Promise.all(
+      queueItems.map((item) =>
+        db.syncQueue.update(item.id, {
+          status: "synced",
+          lastAttemptAt: new Date().toISOString(),
+          error: undefined,
+        }),
+      ),
+    );
+  });
+}
+
+export async function markSubmissionSyncFailed(id: string, error: string) {
+  await db.transaction("rw", db.matchSubmissions, db.syncQueue, async () => {
+    await db.matchSubmissions.update(id, { syncStatus: "failed" });
+    const queueItems = await db.syncQueue.where("recordId").equals(id).toArray();
+    await Promise.all(
+      queueItems.map((item) =>
+        db.syncQueue.update(item.id, {
+          status: "failed",
+          lastAttemptAt: new Date().toISOString(),
+          error,
+        }),
+      ),
+    );
+  });
+}
+
+export async function retryFailedSubmissions() {
+  const failed = await db.matchSubmissions.where("syncStatus").equals("failed").toArray();
+  await Promise.all(failed.map((submission) => db.matchSubmissions.update(submission.id, { syncStatus: "pending" })));
 }
 
 export async function saveEventSchedule(schedule: EventSchedule) {
@@ -140,5 +202,28 @@ export async function importPayload(payload: ExportPayload) {
     for (const assignment of payload.scoutAssignments || []) {
       await db.scoutAssignments.put(assignment);
     }
+  });
+}
+
+// ── Scout Shifts ────────────────────────────────────────────
+
+export async function saveShift(shift: ScoutShift) {
+  await db.scoutShifts.put(shift);
+}
+
+export async function deleteShift(id: string) {
+  await db.scoutShifts.delete(id);
+}
+
+export async function listShifts(eventKey?: string) {
+  const all = await db.scoutShifts.orderBy("startMatch").toArray();
+  return eventKey ? all.filter((s) => s.eventKey === eventKey) : all;
+}
+
+export async function replaceShifts(eventKey: string, shifts: ScoutShift[]) {
+  await db.transaction("rw", db.scoutShifts, async () => {
+    const existing = await db.scoutShifts.where("eventKey").equals(eventKey).toArray();
+    await db.scoutShifts.bulkDelete(existing.map((s) => s.id));
+    if (shifts.length > 0) await db.scoutShifts.bulkPut(shifts);
   });
 }

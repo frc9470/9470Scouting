@@ -1,0 +1,85 @@
+-- ── Profiles ────────────────────────────────────────────────
+-- Auto-populated from auth.users on Google sign-in.
+
+create table if not exists public.profiles (
+  id uuid primary key references auth.users(id) on delete cascade,
+  display_name text not null,
+  email text,
+  avatar_url text,
+  role text not null default 'scouter' check (role in ('scouter', 'lead', 'admin')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists profiles_role_idx on public.profiles (role);
+
+-- Auto-create a profile row whenever a new user signs up.
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer set search_path = ''
+as $$
+begin
+  insert into public.profiles (id, display_name, email, avatar_url)
+  values (
+    new.id,
+    coalesce(
+      new.raw_user_meta_data ->> 'full_name',
+      new.raw_user_meta_data ->> 'name',
+      split_part(new.email, '@', 1)
+    ),
+    new.email,
+    new.raw_user_meta_data ->> 'avatar_url'
+  );
+  return new;
+end;
+$$;
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute function public.handle_new_user();
+
+-- Updated-at trigger (reuse the one from schema.sql)
+drop trigger if exists profiles_set_updated_at on public.profiles;
+create trigger profiles_set_updated_at
+  before update on public.profiles
+  for each row execute function public.set_updated_at();
+
+-- ── RLS for profiles ────────────────────────────────────────
+alter table public.profiles enable row level security;
+
+drop policy if exists "users can read all profiles" on public.profiles;
+create policy "users can read all profiles"
+  on public.profiles for select
+  to authenticated
+  using (true);
+
+drop policy if exists "users can update own profile" on public.profiles;
+create policy "users can update own profile"
+  on public.profiles for update
+  to authenticated
+  using (id = auth.uid())
+  with check (id = auth.uid());
+
+-- ── Tighten match_submissions to require auth ───────────────
+-- Drop the old anon policies
+drop policy if exists "event clients can read match submissions" on public.match_submissions;
+drop policy if exists "event clients can insert match submissions" on public.match_submissions;
+drop policy if exists "event clients can update match submissions" on public.match_submissions;
+
+create policy "authenticated users can read match submissions"
+  on public.match_submissions for select
+  to authenticated
+  using (true);
+
+create policy "authenticated users can insert match submissions"
+  on public.match_submissions for insert
+  to authenticated
+  with check (true);
+
+create policy "authenticated users can update match submissions"
+  on public.match_submissions for update
+  to authenticated
+  using (true)
+  with check (true);
