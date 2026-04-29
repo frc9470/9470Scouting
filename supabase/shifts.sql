@@ -73,6 +73,10 @@ alter table public.profiles
 alter table public.profiles
   add column if not exists availability jsonb not null default '[]'::jsonb;
 
+alter table public.profiles
+  add column if not exists scouting_status text not null default 'active'
+  check (scouting_status in ('active', 'spectator'));
+
 create or replace function public.current_user_is_lead_or_admin()
 returns boolean
 language sql

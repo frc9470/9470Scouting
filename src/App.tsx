@@ -54,6 +54,7 @@ import {
   updateProfileGroup,
   updateMemberGroup,
   updateMemberRole,
+  updateMemberScoutingStatus,
 } from "./sync";
 import { fetchTbaEventSchedule } from "./tba";
 import { eventDisplayName } from "./eventLabels";
@@ -66,6 +67,7 @@ import type {
   MatchStep,
   MatchSubmission,
   MemberGroup,
+  ScoutingStatus,
   ScoutAssignment,
   ScoutShift,
   ScheduledMatch,
@@ -440,7 +442,7 @@ export function App() {
   async function handleAutoGenerateShifts(dayMatches?: ScheduledMatch[], dayMembers?: TeamMember[], dayLabel?: string) {
     if (!activeSchedule) return;
     const sourceMatches = dayMatches ?? activeSchedule.matches.filter((match) => match.compLevel === "qm");
-    const members = dayMembers ?? teamProfiles;
+    const members = (dayMembers ?? teamProfiles).filter((member) => member.scouting_status !== "spectator");
     const scopedSchedule: EventSchedule = {
       ...activeSchedule,
       matchCount: sourceMatches.length,
@@ -525,6 +527,18 @@ export function App() {
       setSupabaseStatus("Updated role");
     } catch (error) {
       setSupabaseStatus(error instanceof Error ? error.message : "Failed to update role");
+      setSyncIndicator("error");
+    }
+  }
+
+  async function handleChangeScoutingStatus(userId: string, scoutingStatus: ScoutingStatus) {
+    try {
+      await updateMemberScoutingStatus(userId, scoutingStatus);
+      setTeamProfiles(await fetchAllProfiles());
+      if (userId === user?.id) await refreshProfile();
+      setSupabaseStatus("Updated scouting status");
+    } catch (error) {
+      setSupabaseStatus(error instanceof Error ? error.message : "Failed to update scouting status");
       setSyncIndicator("error");
     }
   }
@@ -962,7 +976,8 @@ export function App() {
   }
 
   // Gate: group selection and parent availability onboarding
-  if (profile && (!profile.group || (profile.group === "parent" && (profile.availability?.length ?? 0) === 0))) {
+  const profileHasAvailability = Object.hasOwn(profile ?? {}, "availability");
+  if (profile && (!profile.group || (profileHasAvailability && profile.group === "parent" && (profile.availability?.length ?? 0) === 0))) {
     return (
       <div className="app-shell">
         <GroupSelect
@@ -1313,6 +1328,7 @@ export function App() {
             onGenerateAndPush={() => { void handleGenerateAndPush(); }}
             onChangeGroup={(uid, g) => { void handleChangeGroup(uid, g); }}
             onChangeRole={(uid, r) => { void handleChangeRole(uid, r); }}
+            onChangeScoutingStatus={(uid, status) => { void handleChangeScoutingStatus(uid, status); }}
           />
         )}
 

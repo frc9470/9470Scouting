@@ -224,7 +224,9 @@ export function autoGenerateShifts(
     .filter((m) => m.compLevel === "qm")
     .sort((a, b) => a.matchNumber - b.matchNumber);
 
-  if (qualMatches.length === 0 || members.length === 0) return [];
+  const scoutingMembers = members.filter((member) => member.scouting_status !== "spectator");
+
+  if (qualMatches.length === 0 || scoutingMembers.length === 0) return [];
 
   // Build shift boundaries inside day/break segments only.
   const shiftBounds: { start: number; end: number }[] = [];
@@ -242,7 +244,7 @@ export function autoGenerateShifts(
 
   // Track assignments per person
   const assignmentCount = new Map<string, number>();
-  for (const m of members) assignmentCount.set(m.id, 0);
+  for (const m of scoutingMembers) assignmentCount.set(m.id, 0);
 
   const createdAt = new Date().toISOString();
   const shifts: ScoutShift[] = [];
@@ -250,10 +252,10 @@ export function autoGenerateShifts(
   for (let i = 0; i < shiftBounds.length; i++) {
     const { start, end } = shiftBounds[i];
     const midpointMatch = Math.round((start + end) / 2);
-    const availableMembers = members.filter((member) =>
+    const availableMembers = scoutingMembers.filter((member) =>
       isMemberAvailableForMatch(member, midpointMatch, availabilityQualMatches),
     );
-    const candidateMembers = availableMembers.length > 0 ? availableMembers : members;
+    const candidateMembers = availableMembers.length > 0 ? availableMembers : scoutingMembers;
 
     // Score each person: lower = should be picked
     // effectiveLoad = count / weight, so students can accumulate more before being "full"

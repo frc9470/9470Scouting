@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { calculateWorkload, coveredAssignmentIds } from "../assignments";
-import { IconAlertTriangle, IconFlag, IconGraduationCap, IconUser, IconZap } from "../icons";
+import { IconAlertTriangle, IconBan, IconFlag, IconGraduationCap, IconUser, IconZap } from "../icons";
 import { availabilityLabel, groupMatchesForAvailability } from "../availability";
 import { eventDisplayName } from "../eventLabels";
 import { Metric } from "./Input";
@@ -12,6 +12,7 @@ import type {
   MatchSubmission,
   ScoutAssignment,
   ScoutShift,
+  ScoutingStatus,
   ScheduledMatch,
   ShiftSlot,
   StationType,
@@ -32,6 +33,7 @@ export function LeadView({
   onGenerateAndPush,
   onChangeGroup,
   onChangeRole,
+  onChangeScoutingStatus,
 }: {
   activeSchedule: EventSchedule | null;
   profiles: TeamMember[];
@@ -45,6 +47,7 @@ export function LeadView({
   onGenerateAndPush: () => void;
   onChangeGroup: (userId: string, group: MemberGroup | null) => void;
   onChangeRole: (userId: string, role: "scouter" | "lead") => void;
+  onChangeScoutingStatus: (userId: string, scoutingStatus: ScoutingStatus) => void;
 }) {
   const [activeSlot, setActiveSlot] = useState<{ shift: ScoutShift; slot: ShiftSlot } | null>(null);
   const [editingShiftId, setEditingShiftId] = useState<string | null>(null);
@@ -58,9 +61,11 @@ export function LeadView({
 
   // Workload from shifts
   const workload = calculateWorkload(shifts);
-  const students = profiles.filter((p) => p.group === "student");
-  const parents = profiles.filter((p) => p.group === "parent");
-  const unset = profiles.filter((p) => !p.group);
+  const activeProfiles = profiles.filter((p) => p.scouting_status !== "spectator");
+  const students = activeProfiles.filter((p) => p.group === "student");
+  const parents = activeProfiles.filter((p) => p.group === "parent");
+  const unset = activeProfiles.filter((p) => !p.group);
+  const spectators = profiles.filter((p) => p.scouting_status === "spectator");
   const qualMatches = useMemo(
     () => activeSchedule?.matches.filter((match) => match.compLevel === "qm") ?? [],
     [activeSchedule],
@@ -68,9 +73,9 @@ export function LeadView({
   const shiftDays = useMemo(() => groupMatchesForAvailability(activeSchedule), [activeSchedule]);
   const activeShiftDay = shiftDays.find((day) => day.id === selectedShiftDayId) ?? shiftDays[0] ?? null;
   const activeIncludedIds = activeShiftDay
-    ? includedByDay[activeShiftDay.id] ?? profiles.map((profile) => profile.id)
+    ? includedByDay[activeShiftDay.id] ?? activeProfiles.map((profile) => profile.id)
     : [];
-  const activeIncludedMembers = profiles.filter((profile) => activeIncludedIds.includes(profile.id));
+  const activeIncludedMembers = activeProfiles.filter((profile) => activeIncludedIds.includes(profile.id));
 
   const studentAvg =
     students.length > 0
@@ -178,7 +183,7 @@ export function LeadView({
 
   function toggleDayMember(dayId: string, userId: string) {
     setIncludedByDay((current) => {
-      const existing = current[dayId] ?? profiles.map((profile) => profile.id);
+      const existing = current[dayId] ?? activeProfiles.map((profile) => profile.id);
       const next = existing.includes(userId)
         ? existing.filter((id) => id !== userId)
         : [...existing, userId];
@@ -225,6 +230,7 @@ export function LeadView({
             {renderWorkloadChips(students, "Students", studentAvg, <IconGraduationCap size={14} />)}
             {renderWorkloadChips(parents, "Parents", parentAvg, <IconUser size={14} />)}
             {unset.length > 0 && renderWorkloadChips(unset, "Unset Group", 0, null)}
+            {spectators.length > 0 && renderWorkloadChips(spectators, "Spectators", 0, <IconBan size={14} />)}
           </div>
         </section>
       )}
@@ -257,11 +263,11 @@ export function LeadView({
         {activeShiftDay && (
           <div className="day-availability top-space">
             <div className="day-availability-head">
-              <span>{activeIncludedMembers.length}/{profiles.length} available</span>
+              <span>{activeIncludedMembers.length}/{activeProfiles.length} scouting</span>
               <div>
                 <button
                   className="link-button"
-                  onClick={() => setDayIncluded(activeShiftDay.id, profiles.map((profile) => profile.id))}
+                  onClick={() => setDayIncluded(activeShiftDay.id, activeProfiles.map((profile) => profile.id))}
                 >
                   All
                 </button>
@@ -274,7 +280,7 @@ export function LeadView({
               </div>
             </div>
             <div className="availability-grid">
-              {profiles.map((profile) => {
+              {activeProfiles.map((profile) => {
                 const included = activeIncludedIds.includes(profile.id);
                 return (
                   <button
@@ -358,6 +364,15 @@ export function LeadView({
                     >
                       {p.role === "lead" ? "★ Lead" : "Scouter"}
                     </button>
+                    <button
+                      className={`roster-pill status ${p.scouting_status === "spectator" ? "active spectator" : ""}`}
+                      onClick={() => onChangeScoutingStatus(
+                        p.id,
+                        p.scouting_status === "spectator" ? "active" : "spectator",
+                      )}
+                    >
+                      {p.scouting_status === "spectator" ? <><IconBan size={12} /> Spectator</> : "Scouting"}
+                    </button>
                   </div>
                 </div>
               ))}
@@ -406,7 +421,7 @@ export function LeadView({
         <SubSheet
           shift={activeSlot.shift}
           slot={activeSlot.slot}
-          availableMembers={profiles}
+          availableMembers={activeProfiles}
           onAddSub={handleAddSub}
           onRemoveSub={handleRemoveSub}
           onChangeSlotMember={handleChangeSlotMember}

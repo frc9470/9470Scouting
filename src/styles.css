@@ -3164,11 +3164,22 @@ code {
   border-style: dashed;
 }
 
+.roster-pill.status {
+  border-style: dashed;
+}
+
 .roster-pill.role.active.lead {
   background: rgba(245, 158, 11, 0.12);
   border-color: rgba(245, 158, 11, 0.3);
   border-style: solid;
   color: var(--amber);
+}
+
+.roster-pill.status.active.spectator {
+  background: rgba(148, 163, 184, 0.14);
+  border-color: rgba(148, 163, 184, 0.32);
+  border-style: solid;
+  color: var(--ink-secondary);
 }
 
 .scouter-avatar.placeholder {

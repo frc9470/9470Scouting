@@ -4,6 +4,7 @@ export type View = "scout" | "lead" | "dashboard" | "data";
 export type ScheduleAlliance = Exclude<Alliance, "unknown">;
 export type SyncIndicator = "idle" | "syncing" | "synced" | "pending" | "error";
 export type MemberGroup = "student" | "parent";
+export type ScoutingStatus = "active" | "spectator";
 export type StationType = "red1" | "red2" | "red3" | "blue1" | "blue2" | "blue3";
 
 export type ActionKey =
@@ -165,6 +166,7 @@ export interface TeamMember {
   role: "scouter" | "lead" | "admin";
   group: MemberGroup | null;
   availability: string[] | null;
+  scouting_status: ScoutingStatus;
 }
 
 // ── Shift Model ─────────────────────────────────────────────

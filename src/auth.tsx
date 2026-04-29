@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import type { User, Session } from "@supabase/supabase-js";
 import { getClient, isSupabaseConfigured } from "./supabase";
+import type { MemberGroup, ScoutingStatus } from "./types";
 
 export interface Profile {
   id: string;
@@ -8,8 +9,9 @@ export interface Profile {
   email: string | null;
   avatar_url: string | null;
   role: "scouter" | "lead" | "admin";
-  group: "student" | "parent" | null;
+  group: MemberGroup | null;
   availability: string[] | null;
+  scouting_status: ScoutingStatus;
 }
 
 interface AuthContextValue {

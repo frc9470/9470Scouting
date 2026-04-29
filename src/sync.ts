@@ -25,6 +25,7 @@ import type {
   EventSchedule,
   MemberGroup,
   MatchSubmission,
+  ScoutingStatus,
   ScoutAssignment,
   ScoutShift,
   TeamMember,
@@ -225,18 +226,63 @@ export async function pullSchedules(): Promise<number> {
 
 // ── Profile fetching (for lead roster) ──────────────────────
 
+function isMissingProfileColumn(error: { code?: string; message?: string }) {
+  return (
+    error.code === "42703" ||
+    error.code === "PGRST204" ||
+    /availability|scouting_status/i.test(error.message ?? "")
+  );
+}
+
+function withDefaultProfileFields(
+  profile: Omit<TeamMember, "availability" | "scouting_status"> & {
+    availability?: string[] | null;
+    scouting_status?: ScoutingStatus | null;
+  },
+): TeamMember {
+  return {
+    ...profile,
+    availability: profile.availability ?? null,
+    scouting_status: profile.scouting_status ?? "active",
+  };
+}
+
 /** Fetch all team member profiles from Supabase. */
 export async function fetchAllProfiles(): Promise<TeamMember[]> {
   if (!isSupabaseConfigured()) return [];
 
   const supabase = await getSupabaseClient();
-  const { data, error } = await supabase
+  const result = await supabase
+    .from("profiles")
+    .select("id, display_name, email, avatar_url, role, group, availability, scouting_status")
+    .order("display_name", { ascending: true });
+
+  if (!result.error) return (result.data ?? []).map(withDefaultProfileFields);
+  if (!isMissingProfileColumn(result.error)) throw result.error;
+
+  const availabilityFallback = await supabase
     .from("profiles")
     .select("id, display_name, email, avatar_url, role, group, availability")
     .order("display_name", { ascending: true });
 
-  if (error) throw error;
-  return (data ?? []) as TeamMember[];
+  if (!availabilityFallback.error) return (availabilityFallback.data ?? []).map(withDefaultProfileFields);
+  if (!isMissingProfileColumn(availabilityFallback.error)) throw availabilityFallback.error;
+
+  const statusFallback = await supabase
+    .from("profiles")
+    .select("id, display_name, email, avatar_url, role, group, scouting_status")
+    .order("display_name", { ascending: true });
+
+  if (!statusFallback.error) return (statusFallback.data ?? []).map(withDefaultProfileFields);
+  if (!isMissingProfileColumn(statusFallback.error)) throw statusFallback.error;
+
+  const fallback = await supabase
+    .from("profiles")
+    .select("id, display_name, email, avatar_url, role, group")
+    .order("display_name", { ascending: true });
+
+  if (fallback.error) throw fallback.error;
+  return (fallback.data ?? []).map(withDefaultProfileFields);
 }
 
 /** Update the current user's group (student/parent). */
@@ -248,6 +294,11 @@ export async function updateProfileGroup(
   if (!isSupabaseConfigured()) return;
   const supabase = await getSupabaseClient();
   const { error } = await supabase.from("profiles").update({ group, availability }).eq("id", userId);
+  if (error && isMissingProfileColumn(error)) {
+    const fallback = await supabase.from("profiles").update({ group }).eq("id", userId);
+    if (fallback.error) throw fallback.error;
+    return;
+  }
   if (error) throw error;
 }
 
@@ -262,6 +313,11 @@ export async function updateMemberGroup(
   const payload: { group: MemberGroup | null; availability?: string[] | null } = { group };
   if (availability !== undefined) payload.availability = availability;
   const { error } = await supabase.from("profiles").update(payload).eq("id", userId);
+  if (error && availability !== undefined && isMissingProfileColumn(error)) {
+    const fallback = await supabase.from("profiles").update({ group }).eq("id", userId);
+    if (fallback.error) throw fallback.error;
+    return;
+  }
   if (error) throw error;
 }
 
@@ -270,6 +326,20 @@ export async function updateMemberRole(userId: string, role: "scouter" | "lead")
   if (!isSupabaseConfigured()) return;
   const supabase = await getSupabaseClient();
   const { error } = await supabase.from("profiles").update({ role }).eq("id", userId);
+  if (error) throw error;
+}
+
+/** Update whether a member should be included in scouting assignments. */
+export async function updateMemberScoutingStatus(userId: string, scoutingStatus: ScoutingStatus): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  const supabase = await getSupabaseClient();
+  const { error } = await supabase
+    .from("profiles")
+    .update({ scouting_status: scoutingStatus })
+    .eq("id", userId);
+  if (error && isMissingProfileColumn(error)) {
+    throw new Error("Missing profiles.scouting_status. Run the latest Supabase profile migration.");
+  }
   if (error) throw error;
 }
 
