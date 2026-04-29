@@ -46,6 +46,48 @@ create trigger profiles_set_updated_at
   before update on public.profiles
   for each row execute function public.set_updated_at();
 
+-- RLS-safe helper for lead/admin checks. Policies on profiles cannot query
+-- profiles directly without risking recursive policy evaluation.
+create or replace function public.current_user_is_lead_or_admin()
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select exists (
+    select 1
+    from public.profiles
+    where id = auth.uid()
+      and role in ('lead', 'admin')
+  );
+$$;
+
+revoke all on function public.current_user_is_lead_or_admin() from public;
+grant execute on function public.current_user_is_lead_or_admin() to authenticated;
+
+create or replace function public.prevent_profile_privilege_escalation()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if old.role is distinct from new.role
+    and not public.current_user_is_lead_or_admin()
+  then
+    raise exception 'Only leads can change profile roles.';
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists profiles_prevent_privilege_escalation on public.profiles;
+create trigger profiles_prevent_privilege_escalation
+  before update on public.profiles
+  for each row execute function public.prevent_profile_privilege_escalation();
+
 -- ── RLS for profiles ────────────────────────────────────────
 alter table public.profiles enable row level security;
 

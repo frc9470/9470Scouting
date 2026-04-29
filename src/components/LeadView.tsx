@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { calculateWorkload, coveredAssignmentIds } from "../assignments";
 import { IconAlertTriangle, IconFlag, IconGraduationCap, IconUser, IconZap } from "../icons";
 import { groupMatchesByDay } from "../scheduleDays";
+import { eventDisplayName } from "../eventLabels";
 import { Metric } from "./Input";
 import { ShiftCard } from "./ShiftCard";
 import { SubSheet } from "./SubSheet";
@@ -196,7 +197,7 @@ export function LeadView({
         <h1>Lead</h1>
         <p className="muted">
           {activeSchedule
-            ? `${activeSchedule.eventKey.toUpperCase()} · ${qualCount} qual matches`
+            ? `${eventDisplayName(activeSchedule)} · ${qualCount} qual matches`
             : "Load a TBA schedule first"}
         </p>
         {totalAssignments > 0 && (

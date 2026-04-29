@@ -70,6 +70,24 @@ create policy "leads can delete shifts"
 alter table public.profiles
   add column if not exists "group" text check ("group" in ('student', 'parent'));
 
+create or replace function public.current_user_is_lead_or_admin()
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select exists (
+    select 1
+    from public.profiles
+    where id = auth.uid()
+      and role in ('lead', 'admin')
+  );
+$$;
+
+revoke all on function public.current_user_is_lead_or_admin() from public;
+grant execute on function public.current_user_is_lead_or_admin() to authenticated;
+
 -- Allow users to update their own group
 drop policy if exists "users can set own group" on public.profiles;
 create policy "users can set own group"
@@ -83,10 +101,5 @@ drop policy if exists "leads can update profiles" on public.profiles;
 create policy "leads can update profiles"
   on public.profiles for update
   to authenticated
-  using (
-    exists (
-      select 1 from public.profiles
-      where profiles.id = auth.uid()
-        and profiles.role in ('lead', 'admin')
-    )
-  );
+  using (public.current_user_is_lead_or_admin())
+  with check (public.current_user_is_lead_or_admin());

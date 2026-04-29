@@ -243,21 +243,24 @@ export async function fetchAllProfiles(): Promise<TeamMember[]> {
 export async function updateProfileGroup(userId: string, group: MemberGroup): Promise<void> {
   if (!isSupabaseConfigured()) return;
   const supabase = await getSupabaseClient();
-  await supabase.from("profiles").update({ group }).eq("id", userId);
+  const { error } = await supabase.from("profiles").update({ group }).eq("id", userId);
+  if (error) throw error;
 }
 
 /** Update any user's group (lead/admin use). */
 export async function updateMemberGroup(userId: string, group: MemberGroup | null): Promise<void> {
   if (!isSupabaseConfigured()) return;
   const supabase = await getSupabaseClient();
-  await supabase.from("profiles").update({ group }).eq("id", userId);
+  const { error } = await supabase.from("profiles").update({ group }).eq("id", userId);
+  if (error) throw error;
 }
 
 /** Update any user's role (lead/admin use). */
 export async function updateMemberRole(userId: string, role: "scouter" | "lead"): Promise<void> {
   if (!isSupabaseConfigured()) return;
   const supabase = await getSupabaseClient();
-  await supabase.from("profiles").update({ role }).eq("id", userId);
+  const { error } = await supabase.from("profiles").update({ role }).eq("id", userId);
+  if (error) throw error;
 }
 
 // ── Shift sync ──────────────────────────────────────────────

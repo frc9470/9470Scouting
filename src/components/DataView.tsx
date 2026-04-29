@@ -1,4 +1,5 @@
 import { IconDatabase, IconDownload, IconUpload } from "../icons";
+import { eventDisplayName } from "../eventLabels";
 import type { EventSchedule, MatchSubmission } from "../types";
 
 export function DataView({
@@ -10,6 +11,7 @@ export function DataView({
   supabaseStatus,
   setTbaEventKey,
   fetchTbaSchedule,
+  canManageSchedule,
   syncSupabase,
   exportJson,
   importJson,
@@ -23,6 +25,7 @@ export function DataView({
   supabaseStatus: string;
   setTbaEventKey: (eventKey: string) => void;
   fetchTbaSchedule: () => void;
+  canManageSchedule: boolean;
   syncSupabase: () => void;
   exportJson: () => void;
   importJson: (file: File) => void;
@@ -45,17 +48,21 @@ export function DataView({
             autoCorrect="off"
             placeholder="2026cada"
             onChange={(e) => setTbaEventKey(e.target.value)}
+            disabled={!canManageSchedule}
           />
         </label>
         <div className="button-row">
-          <button className="button primary" onClick={fetchTbaSchedule}>
+          <button className="button primary" onClick={fetchTbaSchedule} disabled={!canManageSchedule}>
             <IconDatabase size={16} /> Pull TBA
           </button>
           <span className="sync-message">{tbaStatus}</span>
         </div>
+        {!canManageSchedule && (
+          <p className="muted small">Only leads can change the active TBA event.</p>
+        )}
         {latestSchedule && (
           <p className="muted small">
-            Loaded {latestSchedule.matchCount} matches from {latestSchedule.eventKey.toUpperCase()}.
+            Loaded {latestSchedule.matchCount} matches from {eventDisplayName(latestSchedule)}.
           </p>
         )}
       </section>

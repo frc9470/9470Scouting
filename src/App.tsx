@@ -57,6 +57,7 @@ import {
 } from "./sync";
 import { fetchTbaEventSchedule } from "./tba";
 import { groupMatchesByDay } from "./scheduleDays";
+import { eventDisplayName } from "./eventLabels";
 import type {
   ActionInterval,
   ActionKey,
@@ -120,6 +121,10 @@ export function App() {
   const [nexusState, setNexusState] = useState<NexusLiveState | null>(null);
 
   const isLead = profile?.role === "lead" || profile?.role === "admin";
+
+  useEffect(() => {
+    if (view === "lead" && !isLead) setView("scout");
+  }, [isLead, view]);
 
   // Always populate scouter name from auth profile
   useEffect(() => {
@@ -269,9 +274,26 @@ export function App() {
     ? aggregates.find((t) => t.teamNumber === selectedTeam)
     : null;
   const activeSchedule = eventSchedules[0] ?? null;
+  useEffect(() => {
+    if (!activeSchedule || isLead) return;
+    if (tbaEventKey === activeSchedule.eventKey) return;
+    setTbaEventKeyState(activeSchedule.eventKey);
+    localStorage.setItem("team9470.tbaEventKey", activeSchedule.eventKey);
+  }, [activeSchedule, isLead, tbaEventKey]);
+
   const qualificationMatches = useMemo(
     () => activeSchedule?.matches.filter((match) => match.compLevel === "qm") ?? [],
     [activeSchedule],
+  );
+  const activeEventShifts = useMemo(
+    () => activeSchedule ? scoutShifts.filter((shift) => shift.eventKey === activeSchedule.eventKey) : [],
+    [activeSchedule, scoutShifts],
+  );
+  const activeEventAssignments = useMemo(
+    () => activeSchedule
+      ? scoutAssignments.filter((assignment) => assignment.eventKey === activeSchedule.eventKey)
+      : [],
+    [activeSchedule, scoutAssignments],
   );
   const matchDayGroups = useMemo(() => groupMatchesByDay(qualificationMatches), [qualificationMatches]);
   const selectedScheduledMatch = useMemo(
@@ -280,8 +302,8 @@ export function App() {
   );
   const previewMatches = useMemo(() => qualificationMatches.slice(0, 4), [qualificationMatches]);
   const nextAssignment = useMemo(
-    () => nextAssignmentForScouter(scoutAssignments, latest, user?.id ?? null, draft.scouterName, activeSchedule, nexusState),
-    [user?.id, draft.scouterName, latest, scoutAssignments, activeSchedule, nexusState],
+    () => nextAssignmentForScouter(activeEventAssignments, latest, user?.id ?? null, draft.scouterName, activeSchedule, nexusState),
+    [user?.id, draft.scouterName, latest, activeEventAssignments, activeSchedule, nexusState],
   );
 
   async function refreshSubmissions() { setSubmissions(await listSubmissions()); }
@@ -330,6 +352,10 @@ export function App() {
   }
 
   async function pullTbaSchedule() {
+    if (!isLead) {
+      setTbaStatus("Only leads can change the active TBA event.");
+      return;
+    }
     try {
       setTbaStatus("Loading");
       const schedule = await fetchTbaEventSchedule(tbaEventKey);
@@ -380,6 +406,37 @@ export function App() {
     // kept for backward compat, no longer primary
   }
 
+  async function saveActiveShiftPlan(nextShifts: ScoutShift[]) {
+    if (!activeSchedule) return;
+
+    const scopedShifts = nextShifts.map((shift) => ({
+      ...shift,
+      eventKey: activeSchedule.eventKey,
+    }));
+    const assignments = generateAssignmentsFromShifts(scopedShifts, activeSchedule);
+
+    await replaceShifts(activeSchedule.eventKey, scopedShifts);
+    await replaceScoutAssignments(activeSchedule.eventKey, assignments);
+    await refreshShifts();
+    await refreshAssignments();
+
+    if (isSupabaseConfigured() && user && isLead) {
+      setSupabaseStatus("Saving lead changes");
+      const [shiftResult, assignmentResult] = await Promise.all([
+        pushShifts(activeSchedule.eventKey, scopedShifts, user.id),
+        pushAssignments(activeSchedule.eventKey, assignments, user.id),
+      ]);
+
+      if (shiftResult.error || assignmentResult.error) {
+        setSupabaseStatus(shiftResult.error || assignmentResult.error || "Failed to save lead changes");
+        setSyncIndicator("error");
+        return;
+      }
+      setSupabaseStatus(`Saved ${scopedShifts.length} shifts`);
+      setSyncIndicator("synced");
+    }
+  }
+
   async function handleAutoGenerateShifts(dayMatches?: ScheduledMatch[], dayMembers?: TeamMember[], dayLabel?: string) {
     if (!activeSchedule) return;
     const sourceMatches = dayMatches ?? activeSchedule.matches.filter((match) => match.compLevel === "qm");
@@ -395,61 +452,80 @@ export function App() {
 
     if (dayMatches) {
       const selectedMatchNumbers = new Set(dayMatches.map((match) => match.matchNumber));
-      const preserved = scoutShifts.filter((shift) => {
-        if (shift.eventKey !== activeSchedule.eventKey) return false;
+      const preserved = activeEventShifts.filter((shift) => {
         for (let matchNumber = shift.startMatch; matchNumber <= shift.endMatch; matchNumber += 1) {
           if (selectedMatchNumbers.has(matchNumber)) return false;
         }
         return true;
       });
-      await replaceShifts(activeSchedule.eventKey, [...preserved, ...generated]);
+      await saveActiveShiftPlan([...preserved, ...generated]);
     } else {
-      await replaceShifts(activeSchedule.eventKey, generated);
+      await saveActiveShiftPlan(generated);
     }
-    await refreshShifts();
   }
 
   async function handleSaveShift(shift: ScoutShift) {
-    const { saveShift } = await import("./db");
-    await saveShift(shift);
-    await refreshShifts();
+    if (!activeSchedule) return;
+    const nextShifts = activeEventShifts.some((existing) => existing.id === shift.id)
+      ? activeEventShifts.map((existing) => existing.id === shift.id ? shift : existing)
+      : [...activeEventShifts, shift];
+    await saveActiveShiftPlan(nextShifts);
   }
 
   async function handleDeleteShift(id: string) {
-    const { deleteShift: dbDeleteShift } = await import("./db");
-    await dbDeleteShift(id);
-    await refreshShifts();
+    if (!activeSchedule) return;
+    await saveActiveShiftPlan(activeEventShifts.filter((shift) => shift.id !== id));
   }
 
   async function handleUpdateShifts(shifts: ScoutShift[]) {
     if (!activeSchedule) return;
-    const { replaceShifts } = await import("./db");
-    await replaceShifts(activeSchedule.eventKey, shifts);
-    await refreshShifts();
+    await saveActiveShiftPlan(shifts);
   }
 
   async function handleGenerateAndPush() {
-    if (!activeSchedule || scoutShifts.length === 0) return;
-    const assignments = generateAssignmentsFromShifts(scoutShifts, activeSchedule);
-    const { replaceScoutAssignments } = await import("./db");
+    if (!activeSchedule) return;
+    const assignments = generateAssignmentsFromShifts(activeEventShifts, activeSchedule);
     await replaceScoutAssignments(activeSchedule.eventKey, assignments);
     await refreshAssignments();
 
     // Push shifts + assignments to Supabase
     if (isSupabaseConfigured() && user) {
-      await pushShifts(activeSchedule.eventKey, scoutShifts, user.id);
-      await pushAssignments(activeSchedule.eventKey, assignments, user.id);
+      const [shiftResult, assignmentResult] = await Promise.all([
+        pushShifts(activeSchedule.eventKey, activeEventShifts, user.id),
+        pushAssignments(activeSchedule.eventKey, assignments, user.id),
+      ]);
+      if (shiftResult.error || assignmentResult.error) {
+        setSupabaseStatus(shiftResult.error || assignmentResult.error || "Push failed");
+        setSyncIndicator("error");
+        return;
+      }
+      setSupabaseStatus(`Pushed ${activeEventShifts.length} shifts`);
+      setSyncIndicator("synced");
     }
   }
 
   async function handleChangeGroup(userId: string, group: MemberGroup | null) {
-    await updateMemberGroup(userId, group);
-    setTeamProfiles(await fetchAllProfiles());
+    try {
+      await updateMemberGroup(userId, group);
+      setTeamProfiles(await fetchAllProfiles());
+      if (userId === user?.id) await refreshProfile();
+      setSupabaseStatus("Updated roster");
+    } catch (error) {
+      setSupabaseStatus(error instanceof Error ? error.message : "Failed to update roster");
+      setSyncIndicator("error");
+    }
   }
 
   async function handleChangeRole(userId: string, role: "scouter" | "lead") {
-    await updateMemberRole(userId, role);
-    setTeamProfiles(await fetchAllProfiles());
+    try {
+      await updateMemberRole(userId, role);
+      setTeamProfiles(await fetchAllProfiles());
+      if (userId === user?.id) await refreshProfile();
+      setSupabaseStatus("Updated role");
+    } catch (error) {
+      setSupabaseStatus(error instanceof Error ? error.message : "Failed to update role");
+      setSyncIndicator("error");
+    }
   }
 
   function updateField<K extends keyof MatchDraft>(field: K, value: MatchDraft[K]) {
@@ -759,6 +835,7 @@ export function App() {
 
     const schedule: EventSchedule = {
       eventKey,
+      eventName: "Fake Live Event",
       fetchedAt: new Date().toISOString(),
       matchCount: matches.length,
       matches,
@@ -994,11 +1071,11 @@ export function App() {
                 {activeSchedule ? (
                   <MatchSelectionList
                     eventKey={activeSchedule.eventKey}
-                    eventLabel={activeSchedule.eventKey.toUpperCase()}
+                    eventLabel={eventDisplayName(activeSchedule)}
                     dayGroups={matchDayGroups}
                     matches={qualificationMatches}
-                    assignments={scoutAssignments}
-                    shifts={scoutShifts}
+                    assignments={activeEventAssignments}
+                    shifts={activeEventShifts}
                     submissions={latest}
                     userId={user.id}
                     scouterName={profile?.display_name ?? draft.scouterName}
@@ -1216,12 +1293,12 @@ export function App() {
           />
         )}
 
-        {view === "lead" && (
+        {view === "lead" && isLead && (
           <LeadView
             activeSchedule={activeSchedule}
             profiles={teamProfiles}
-            shifts={scoutShifts}
-            assignments={scoutAssignments}
+            shifts={activeEventShifts}
+            assignments={activeEventAssignments}
             submissions={latest}
             onAutoGenerate={(matches, members, dayLabel) => { void handleAutoGenerateShifts(matches, members, dayLabel); }}
             onSaveShift={(s) => { void handleSaveShift(s); }}
@@ -1243,10 +1320,11 @@ export function App() {
             supabaseStatus={supabaseStatus}
             setTbaEventKey={setTbaEventKey}
             fetchTbaSchedule={() => { void pullTbaSchedule(); }}
+            canManageSchedule={isLead}
             syncSupabase={() => { void syncSupabaseNow(); }}
             exportJson={exportJson}
             importJson={importJson}
-            seedTestEvent={import.meta.env.DEV ? () => { void seedFakeLiveEvent(); } : undefined}
+            seedTestEvent={import.meta.env.DEV && isLead ? () => { void seedFakeLiveEvent(); } : undefined}
           />
         )}
       </main>

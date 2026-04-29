@@ -16,6 +16,11 @@ interface TbaMatchSimple {
   alliances?: Partial<Record<ScheduleAlliance, TbaAlliance>>;
 }
 
+interface TbaEventSimple {
+  name?: string;
+  short_name?: string;
+}
+
 export function normalizeEventKey(eventKey: string) {
   return eventKey.trim().toLowerCase().replace(/[^a-z0-9]/g, "");
 }
@@ -52,12 +57,16 @@ export async function fetchTbaEventSchedule(eventKeyInput: string): Promise<Even
   const eventKey = normalizeEventKey(eventKeyInput);
   if (!eventKey) throw new Error("Enter a TBA event key.");
 
-  const response = await fetch(`/api/tba/event/${encodeURIComponent(eventKey)}/matches/simple`);
+  const [response, eventResponse] = await Promise.all([
+    fetch(`/api/tba/event/${encodeURIComponent(eventKey)}/matches/simple`),
+    fetch(`/api/tba/event/${encodeURIComponent(eventKey)}/simple`),
+  ]);
   if (!response.ok) {
     const text = await response.text();
     throw new Error(text || `TBA request failed with ${response.status}.`);
   }
 
+  const tbaEvent = eventResponse.ok ? ((await eventResponse.json()) as TbaEventSimple) : null;
   const tbaMatches = (await response.json()) as TbaMatchSimple[];
   const matches = tbaMatches
     .map<ScheduledMatch>((match) => ({
@@ -76,6 +85,7 @@ export async function fetchTbaEventSchedule(eventKeyInput: string): Promise<Even
 
   return {
     eventKey,
+    eventName: tbaEvent?.short_name || tbaEvent?.name,
     fetchedAt: new Date().toISOString(),
     matchCount: matches.length,
     matches,

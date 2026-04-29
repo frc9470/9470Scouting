@@ -128,6 +128,7 @@ export interface ScheduledMatch {
 
 export interface EventSchedule {
   eventKey: string;
+  eventName?: string;
   fetchedAt: string;
   matchCount: number;
   matches: ScheduledMatch[];
