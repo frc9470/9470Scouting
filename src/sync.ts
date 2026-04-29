@@ -232,7 +232,7 @@ export async function fetchAllProfiles(): Promise<TeamMember[]> {
   const supabase = await getSupabaseClient();
   const { data, error } = await supabase
     .from("profiles")
-    .select("id, display_name, email, avatar_url, role, group")
+    .select("id, display_name, email, avatar_url, role, group, availability")
     .order("display_name", { ascending: true });
 
   if (error) throw error;
@@ -240,18 +240,28 @@ export async function fetchAllProfiles(): Promise<TeamMember[]> {
 }
 
 /** Update the current user's group (student/parent). */
-export async function updateProfileGroup(userId: string, group: MemberGroup): Promise<void> {
+export async function updateProfileGroup(
+  userId: string,
+  group: MemberGroup,
+  availability: string[] = [],
+): Promise<void> {
   if (!isSupabaseConfigured()) return;
   const supabase = await getSupabaseClient();
-  const { error } = await supabase.from("profiles").update({ group }).eq("id", userId);
+  const { error } = await supabase.from("profiles").update({ group, availability }).eq("id", userId);
   if (error) throw error;
 }
 
 /** Update any user's group (lead/admin use). */
-export async function updateMemberGroup(userId: string, group: MemberGroup | null): Promise<void> {
+export async function updateMemberGroup(
+  userId: string,
+  group: MemberGroup | null,
+  availability?: string[],
+): Promise<void> {
   if (!isSupabaseConfigured()) return;
   const supabase = await getSupabaseClient();
-  const { error } = await supabase.from("profiles").update({ group }).eq("id", userId);
+  const payload: { group: MemberGroup | null; availability?: string[] | null } = { group };
+  if (availability !== undefined) payload.availability = availability;
+  const { error } = await supabase.from("profiles").update(payload).eq("id", userId);
   if (error) throw error;
 }
 

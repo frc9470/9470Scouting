@@ -1,6 +1,7 @@
 import { createId } from "./domain";
 import type { NexusLiveState } from "./nexus";
 import { splitMatchesIntoSegments } from "./scheduleDays";
+import { isMemberAvailableForMatch } from "./availability";
 import type {
   EventSchedule,
   MatchSubmission,
@@ -212,10 +213,14 @@ export function autoGenerateShifts(
     studentWeight?: number;
     minBreakGapMs?: number;
     namePrefix?: string;
+    availabilityMatches?: ScheduledMatch[];
   } = {},
 ): ScoutShift[] {
-  const { matchesPerShift = 10, studentWeight = 2.0, minBreakGapMs, namePrefix } = options;
+  const { matchesPerShift = 10, studentWeight = 2.0, minBreakGapMs, namePrefix, availabilityMatches } = options;
   const qualMatches = schedule.matches
+    .filter((m) => m.compLevel === "qm")
+    .sort((a, b) => a.matchNumber - b.matchNumber);
+  const availabilityQualMatches = (availabilityMatches ?? qualMatches)
     .filter((m) => m.compLevel === "qm")
     .sort((a, b) => a.matchNumber - b.matchNumber);
 
@@ -244,10 +249,15 @@ export function autoGenerateShifts(
 
   for (let i = 0; i < shiftBounds.length; i++) {
     const { start, end } = shiftBounds[i];
+    const midpointMatch = Math.round((start + end) / 2);
+    const availableMembers = members.filter((member) =>
+      isMemberAvailableForMatch(member, midpointMatch, availabilityQualMatches),
+    );
+    const candidateMembers = availableMembers.length > 0 ? availableMembers : members;
 
     // Score each person: lower = should be picked
     // effectiveLoad = count / weight, so students can accumulate more before being "full"
-    const scored = members
+    const scored = candidateMembers
       .map((m) => {
         const count = assignmentCount.get(m.id) ?? 0;
         const weight = m.group === "student" ? studentWeight : 1.0;

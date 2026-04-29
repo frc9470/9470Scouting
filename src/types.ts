@@ -164,6 +164,7 @@ export interface TeamMember {
   avatar_url: string | null;
   role: "scouter" | "lead" | "admin";
   group: MemberGroup | null;
+  availability: string[] | null;
 }
 
 // ── Shift Model ─────────────────────────────────────────────

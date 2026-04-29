@@ -56,8 +56,8 @@ import {
   updateMemberRole,
 } from "./sync";
 import { fetchTbaEventSchedule } from "./tba";
-import { groupMatchesByDay } from "./scheduleDays";
 import { eventDisplayName } from "./eventLabels";
+import { DEFAULT_PARENT_AVAILABILITY, groupMatchesForAvailability } from "./availability";
 import type {
   ActionInterval,
   ActionKey,
@@ -295,7 +295,7 @@ export function App() {
       : [],
     [activeSchedule, scoutAssignments],
   );
-  const matchDayGroups = useMemo(() => groupMatchesByDay(qualificationMatches), [qualificationMatches]);
+  const matchDayGroups = useMemo(() => groupMatchesForAvailability(activeSchedule), [activeSchedule]);
   const selectedScheduledMatch = useMemo(
     () => qualificationMatches.find((match) => String(match.matchNumber) === draft.matchNumber),
     [draft.matchNumber, qualificationMatches],
@@ -448,6 +448,7 @@ export function App() {
     };
     const generated = autoGenerateShifts(scopedSchedule, members, {
       namePrefix: dayLabel,
+      availabilityMatches: activeSchedule.matches,
     });
 
     if (dayMatches) {
@@ -506,7 +507,7 @@ export function App() {
 
   async function handleChangeGroup(userId: string, group: MemberGroup | null) {
     try {
-      await updateMemberGroup(userId, group);
+      await updateMemberGroup(userId, group, group === "parent" ? DEFAULT_PARENT_AVAILABILITY : []);
       setTeamProfiles(await fetchAllProfiles());
       if (userId === user?.id) await refreshProfile();
       setSupabaseStatus("Updated roster");
@@ -960,13 +961,18 @@ export function App() {
     );
   }
 
-  // Gate: group selection (first-time onboarding)
-  if (profile && !profile.group) {
+  // Gate: group selection and parent availability onboarding
+  if (profile && (!profile.group || (profile.group === "parent" && (profile.availability?.length ?? 0) === 0))) {
     return (
       <div className="app-shell">
         <GroupSelect
-          onSelect={async (group: MemberGroup) => {
-            await updateProfileGroup(user.id, group);
+          initialGroup={profile.group}
+          onSelect={async (group: MemberGroup, availability: string[] | null) => {
+            await updateProfileGroup(
+              user.id,
+              group,
+              group === "parent" ? availability ?? DEFAULT_PARENT_AVAILABILITY : [],
+            );
             await refreshProfile();
           }}
         />

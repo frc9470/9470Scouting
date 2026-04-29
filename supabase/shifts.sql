@@ -70,6 +70,9 @@ create policy "leads can delete shifts"
 alter table public.profiles
   add column if not exists "group" text check ("group" in ('student', 'parent'));
 
+alter table public.profiles
+  add column if not exists availability jsonb not null default '[]'::jsonb;
+
 create or replace function public.current_user_is_lead_or_admin()
 returns boolean
 language sql

@@ -9,6 +9,7 @@ export interface Profile {
   avatar_url: string | null;
   role: "scouter" | "lead" | "admin";
   group: "student" | "parent" | null;
+  availability: string[] | null;
 }
 
 interface AuthContextValue {

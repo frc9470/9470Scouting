@@ -7,11 +7,15 @@ create table if not exists public.profiles (
   email text,
   avatar_url text,
   role text not null default 'scouter' check (role in ('scouter', 'lead', 'admin')),
+  availability jsonb not null default '[]'::jsonb check (jsonb_typeof(availability) = 'array'),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
 create index if not exists profiles_role_idx on public.profiles (role);
+
+alter table public.profiles
+  add column if not exists availability jsonb not null default '[]'::jsonb;
 
 -- Auto-create a profile row whenever a new user signs up.
 create or replace function public.handle_new_user()

@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { calculateWorkload, coveredAssignmentIds } from "../assignments";
 import { IconAlertTriangle, IconFlag, IconGraduationCap, IconUser, IconZap } from "../icons";
-import { groupMatchesByDay } from "../scheduleDays";
+import { availabilityLabel, groupMatchesForAvailability } from "../availability";
 import { eventDisplayName } from "../eventLabels";
 import { Metric } from "./Input";
 import { ShiftCard } from "./ShiftCard";
@@ -65,7 +65,7 @@ export function LeadView({
     () => activeSchedule?.matches.filter((match) => match.compLevel === "qm") ?? [],
     [activeSchedule],
   );
-  const shiftDays = useMemo(() => groupMatchesByDay(qualMatches), [qualMatches]);
+  const shiftDays = useMemo(() => groupMatchesForAvailability(activeSchedule), [activeSchedule]);
   const activeShiftDay = shiftDays.find((day) => day.id === selectedShiftDayId) ?? shiftDays[0] ?? null;
   const activeIncludedIds = activeShiftDay
     ? includedByDay[activeShiftDay.id] ?? profiles.map((profile) => profile.id)
@@ -336,6 +336,9 @@ export function LeadView({
                   )}
                   <div className="roster-name">
                     <span>{p.display_name}</span>
+                    {p.group === "parent" && p.availability && p.availability.length > 0 && (
+                      <em>{p.availability.map(availabilityLabel).join(" · ")}</em>
+                    )}
                   </div>
                   <div className="roster-pills">
                     <button
