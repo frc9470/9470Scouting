@@ -1155,7 +1155,13 @@ export function App() {
                         <Choice selected={draft.practiceMode} onClick={() => updateField("practiceMode", !draft.practiceMode)}>
                           Practice Mode
                         </Choice>
-                        <button className="button primary" style={{ marginLeft: "auto" }} onClick={() => goTo("prematch")}>
+                        <button className="button primary" style={{ marginLeft: "auto" }} onClick={() => {
+                          if (!draft.matchNumber || !draft.teamNumber) {
+                            window.alert("Please fill out the Match # and Team # before continuing.");
+                            return;
+                          }
+                          goTo("prematch")
+                        }}>
                           Continue
                         </button>
                       </div>
