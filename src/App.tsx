@@ -55,6 +55,7 @@ import {
   updateMemberGroup,
   updateMemberRole,
   updateMemberScoutingStatus,
+  clearSubmittedData,
 } from "./sync";
 import { fetchTbaEventSchedule } from "./tba";
 import { eventDisplayName } from "./eventLabels";
@@ -504,6 +505,26 @@ export function App() {
       }
       setSupabaseStatus(`Pushed ${activeEventShifts.length} shifts`);
       setSyncIndicator("synced");
+    }
+  }
+
+  async function handleClearSubmittedData() {
+    if (!isLead) return;
+    try {
+      setSyncIndicator("syncing");
+      setSupabaseStatus("Clearing submitted data...");
+      const result = await clearSubmittedData();
+      await refreshSubmissions();
+      setSupabaseStatus(
+        isSupabaseConfigured()
+          ? `Cleared ${result.remoteCleared} shared records.`
+          : `Cleared ${result.localCleared} local records.`,
+      );
+      setSyncIndicator("synced");
+    } catch (error) {
+      setSupabaseStatus(error instanceof Error ? error.message : "Failed to clear submitted data");
+      setSyncIndicator("error");
+      throw error;
     }
   }
 
@@ -1326,6 +1347,7 @@ export function App() {
             onDeleteShift={(id) => { void handleDeleteShift(id); }}
             onUpdateShifts={(s) => { void handleUpdateShifts(s); }}
             onGenerateAndPush={() => { void handleGenerateAndPush(); }}
+            onClearSubmittedData={handleClearSubmittedData}
             onChangeGroup={(uid, g) => { void handleChangeGroup(uid, g); }}
             onChangeRole={(uid, r) => { void handleChangeRole(uid, r); }}
             onChangeScoutingStatus={(uid, status) => { void handleChangeScoutingStatus(uid, status); }}

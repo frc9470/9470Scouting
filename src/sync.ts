@@ -1,4 +1,5 @@
 import {
+  clearLocalSubmissions,
   listPendingSubmissions,
   markSubmissionSynced,
   markSubmissionSyncFailed,
@@ -36,6 +37,11 @@ export interface SyncResult {
   pulled: number;
   failed: number;
   assignmentsPulled: number;
+}
+
+export interface ClearSubmittedDataResult {
+  localCleared: number;
+  remoteCleared: number;
 }
 
 // ── Submission sync ─────────────────────────────────────────
@@ -105,6 +111,26 @@ export async function autoSyncSubmission(submission: MatchSubmission): Promise<b
   } catch {
     return false;
   }
+}
+
+/** Lead action: remove active submitted match data without touching schedules, assignments, shifts, or profiles. */
+export async function clearSubmittedData(): Promise<ClearSubmittedDataResult> {
+  let remoteCleared = 0;
+
+  if (isSupabaseConfigured()) {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase
+      .from("match_submissions")
+      .update({ deleted: true })
+      .eq("deleted", false)
+      .select("id");
+
+    if (error) throw error;
+    remoteCleared = data?.length ?? 0;
+  }
+
+  const localCleared = await clearLocalSubmissions();
+  return { localCleared, remoteCleared };
 }
 
 // ── Assignment sync ─────────────────────────────────────────

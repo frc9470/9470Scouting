@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { calculateWorkload, coveredAssignmentIds } from "../assignments";
-import { IconAlertTriangle, IconBan, IconFlag, IconGraduationCap, IconUser, IconZap } from "../icons";
+import { IconAlertTriangle, IconBan, IconFlag, IconGraduationCap, IconTrash, IconUser, IconZap } from "../icons";
 import { availabilityLabel, groupMatchesForAvailability } from "../availability";
 import { eventDisplayName } from "../eventLabels";
 import { Metric } from "./Input";
@@ -31,6 +31,7 @@ export function LeadView({
   onDeleteShift,
   onUpdateShifts,
   onGenerateAndPush,
+  onClearSubmittedData,
   onChangeGroup,
   onChangeRole,
   onChangeScoutingStatus,
@@ -45,6 +46,7 @@ export function LeadView({
   onDeleteShift: (id: string) => void;
   onUpdateShifts: (shifts: ScoutShift[]) => void;
   onGenerateAndPush: () => void;
+  onClearSubmittedData: () => Promise<void>;
   onChangeGroup: (userId: string, group: MemberGroup | null) => void;
   onChangeRole: (userId: string, role: "scouter" | "lead") => void;
   onChangeScoutingStatus: (userId: string, scoutingStatus: ScoutingStatus) => void;
@@ -54,6 +56,7 @@ export function LeadView({
   const [showRoster, setShowRoster] = useState(false);
   const [selectedShiftDayId, setSelectedShiftDayId] = useState<string | null>(null);
   const [includedByDay, setIncludedByDay] = useState<Record<string, string[]>>({});
+  const [clearingSubmissions, setClearingSubmissions] = useState(false);
 
   const covered = coveredAssignmentIds(assignments, submissions);
   const totalAssignments = assignments.length;
@@ -195,6 +198,20 @@ export function LeadView({
     setIncludedByDay((current) => ({ ...current, [dayId]: userIds }));
   }
 
+  async function handleClearSubmittedData() {
+    if (submissions.length === 0 || clearingSubmissions) return;
+    const confirmed = window.confirm(
+      `Clear ${submissions.length} submitted scouting record${submissions.length === 1 ? "" : "s"}?`,
+    );
+    if (!confirmed) return;
+    setClearingSubmissions(true);
+    try {
+      await onClearSubmittedData();
+    } finally {
+      setClearingSubmissions(false);
+    }
+  }
+
   return (
     <div className="grid">
       {/* Header + Coverage */}
@@ -218,6 +235,24 @@ export function LeadView({
             </div>
           </>
         )}
+      </section>
+
+      <section className="panel">
+        <div className="section-head">
+          <div>
+            <h2>Submitted Data</h2>
+            <p className="muted small">{submissions.length} active scouting records</p>
+          </div>
+        </div>
+        <div className="button-row top-space">
+          <button
+            className="button danger"
+            onClick={() => { void handleClearSubmittedData(); }}
+            disabled={submissions.length === 0 || clearingSubmissions}
+          >
+            <IconTrash size={16} /> {clearingSubmissions ? "Clearing..." : "Clear Submissions"}
+          </button>
+        </div>
       </section>
 
       {/* Workload */}

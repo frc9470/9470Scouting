@@ -68,7 +68,11 @@ export async function deleteDraft(id: string) {
 }
 
 export async function listSubmissions() {
-  return db.matchSubmissions.orderBy("submittedAt").reverse().toArray();
+  return db.matchSubmissions
+    .orderBy("submittedAt")
+    .reverse()
+    .filter((submission) => !submission.deleted)
+    .toArray();
 }
 
 export async function listPendingSubmissions() {
@@ -90,6 +94,17 @@ export async function saveSubmission(submission: MatchSubmission) {
       createdAt: new Date().toISOString(),
     });
   });
+}
+
+export async function clearLocalSubmissions() {
+  let cleared = 0;
+  await db.transaction("rw", db.matchSubmissions, db.syncQueue, async () => {
+    cleared = await db.matchSubmissions.count();
+    await db.matchSubmissions.clear();
+    const queueItems = await db.syncQueue.where("recordType").equals("match_submission").toArray();
+    if (queueItems.length > 0) await db.syncQueue.bulkDelete(queueItems.map((item) => item.id));
+  });
+  return cleared;
 }
 
 export async function saveSyncedSubmissions(submissions: MatchSubmission[]) {
