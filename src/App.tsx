@@ -685,6 +685,39 @@ export function App() {
     updateDraft((c) => ({ ...c, currentStep: nextStep }));
   }
 
+  async function returnToMatchSelection() {
+    const hasMatchProgress =
+      step === "live" ||
+      step === "postmatch" ||
+      elapsedMs > 0 ||
+      draft.actionIntervals.length > 0 ||
+      draft.eventMarks.length > 0;
+
+    if (
+      hasMatchProgress &&
+      !window.confirm("Discard this scouting draft and choose a different team?")
+    ) {
+      return;
+    }
+
+    const oldDraftId = draft.id;
+    const nextDraft = {
+      ...createEmptyDraft(),
+      scouterName: profile?.display_name ?? draft.scouterName,
+    };
+
+    setActiveAction("driving");
+    setActiveIntervalId(null);
+    setElapsedBeforeResume(0);
+    setMatchStartedAt(null);
+    setNow(Date.now());
+    setDraft(nextDraft);
+    setStep("select");
+    setSaveStatus("Ready");
+    await deleteDraft(oldDraftId);
+    await saveDraft(nextDraft);
+  }
+
   function startMatch() {
     setStep("waiting");
     updateDraft((c) => ({ ...c, currentStep: "waiting", liveStartedAtUnixMs: null }));
@@ -1247,6 +1280,15 @@ export function App() {
                 tabIndex={0}
                 onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") beginLiveMatch(); }}
               >
+                <button
+                  className="button ghost waiting-back-button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    void returnToMatchSelection();
+                  }}
+                >
+                  Back
+                </button>
                 <div className="waiting-screen">
                   <span className="waiting-label">Ready</span>
                   <div className="countdown running">Auto 0:20</div>
@@ -1269,6 +1311,7 @@ export function App() {
                 markIncap={markIncap}
                 undoLast={undoLast}
                 updateDraft={updateDraft}
+                onBackToSelection={returnToMatchSelection}
               />
             )}
 
@@ -1280,6 +1323,7 @@ export function App() {
                 updateDraft={updateDraft}
                 submitMatch={submitMatch}
                 goTo={goTo}
+                onBackToSelection={returnToMatchSelection}
               />
             )}
 
