@@ -758,10 +758,18 @@ button {
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
   transition: transform var(--duration-fast) var(--ease-spring);
+  position: relative;
 }
 
 .waiting-touch:active {
   transform: scale(0.97);
+}
+
+.waiting-back-button {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  z-index: 1;
 }
 
 /* ── Action Grid ─────────────────────────────────────────── */

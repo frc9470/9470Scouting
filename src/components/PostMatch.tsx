@@ -12,6 +12,7 @@ export function PostMatch({
   updateDraft,
   submitMatch,
   goTo,
+  onBackToSelection,
 }: {
   draft: MatchDraft;
   elapsedMs: number;
@@ -22,6 +23,7 @@ export function PostMatch({
   updateDraft: (updater: (current: MatchDraft) => MatchDraft) => void;
   submitMatch: () => void;
   goTo: (step: "select" | "prematch" | "live" | "postmatch" | "complete") => void;
+  onBackToSelection: () => void;
 }) {
   const summary = summarizeIntervals(draft.actionIntervals, elapsedMs);
   const missing = missingRequiredFields(draft);
@@ -125,8 +127,11 @@ export function PostMatch({
       )}
 
       <div className="button-row top-space">
+        <button className="button ghost" onClick={onBackToSelection}>
+          Back to Teams
+        </button>
         <button className="button ghost" onClick={() => goTo("live")}>
-          Back
+          Back to Match
         </button>
         <button className="button primary" onClick={submitMatch}>
           Submit Match

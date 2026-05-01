@@ -18,6 +18,7 @@ export function LiveMatch({
   markIncap,
   undoLast,
   updateDraft,
+  onBackToSelection,
 }: {
   draft: MatchDraft;
   elapsedMs: number;
@@ -35,6 +36,7 @@ export function LiveMatch({
   markIncap: () => void;
   undoLast: () => void;
   updateDraft: (updater: (current: MatchDraft) => MatchDraft) => void;
+  onBackToSelection: () => void;
 }) {
   return (
     <section className="panel live-layout">
@@ -48,6 +50,9 @@ export function LiveMatch({
           </div>
         </div>
         <div className="button-row">
+          <button className="button ghost" onClick={onBackToSelection}>
+            Back
+          </button>
           <button className="button ghost" onClick={undoLast}>
             <IconRotateCcw size={16} /> Undo
           </button>
