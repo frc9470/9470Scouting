@@ -1068,6 +1068,88 @@ table {
   min-width: 700px;
 }
 
+.dashboard-view {
+  width: min(1120px, calc(100vw - 24px));
+  margin-left: 50%;
+  transform: translateX(-50%);
+}
+
+.dashboard-hero {
+  display: grid;
+  gap: 4px;
+}
+
+.dashboard-summary-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.ranking-controls .section-head {
+  align-items: end;
+  flex-wrap: wrap;
+}
+
+.bps-field {
+  width: 150px;
+  flex: 0 0 auto;
+}
+
+.weight-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.compact-field input {
+  min-height: 40px;
+  font-size: 14px;
+}
+
+.ranking-table {
+  min-width: 1420px;
+}
+
+.match-evidence-table {
+  min-width: 1320px;
+}
+
+.score-cell {
+  color: var(--accent);
+  font-weight: 900;
+}
+
+.note-cell {
+  min-width: 220px;
+  max-width: 340px;
+  white-space: normal;
+  line-height: 1.4;
+}
+
+.rank-badge {
+  display: grid;
+  gap: 2px;
+  min-width: 92px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: var(--accent-subtle);
+  border: 1px solid rgba(59, 130, 246, 0.28);
+  text-align: right;
+}
+
+.rank-badge span {
+  color: var(--ink-secondary);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.rank-badge strong {
+  color: var(--accent);
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+}
+
 th, td {
   border-bottom: 1px solid var(--glass-border);
   font-size: 12px;
@@ -1299,6 +1381,10 @@ th {
   grid-template-columns: repeat(3, 1fr);
   gap: 8px;
   margin-top: 12px;
+}
+
+.team-detail-stats--wide {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .team-detail-stat {
@@ -2110,6 +2196,14 @@ code {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
+  .dashboard-summary-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .weight-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
   .summary-grid {
     grid-template-columns: repeat(5, minmax(0, 1fr));
   }
@@ -2139,6 +2233,10 @@ code {
 
   /* Team detail stat grid grows on desktop */
   .team-detail-stats {
+    grid-template-columns: repeat(6, 1fr);
+  }
+
+  .team-detail-stats--wide {
     grid-template-columns: repeat(6, 1fr);
   }
 }

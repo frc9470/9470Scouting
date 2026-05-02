@@ -156,6 +156,10 @@ export function aggregateTeams(submissions: MatchSubmission[]): TeamAggregate[] 
         teamNumber,
         submissions: [],
         matches: 0,
+        totalObservedMs: 0,
+        drivingMs: 0,
+        intakingMs: 0,
+        scoringMs: 0,
         incapCount: 0,
         defenseMs: 0,
         feedingMs: 0,
@@ -174,9 +178,14 @@ export function aggregateTeams(submissions: MatchSubmission[]): TeamAggregate[] 
     }
 
     const team = teams.get(teamNumber)!;
-    const summary = summarizeIntervals(submission.actionIntervals);
+    const observedMs = observedMatchMs(submission);
+    const summary = summarizeIntervals(submission.actionIntervals, observedMs);
     team.submissions.push(submission);
     team.matches += 1;
+    team.totalObservedMs += observedMs;
+    team.drivingMs += summary.drivingMs;
+    team.intakingMs += summary.intakingMs;
+    team.scoringMs += summary.scoringMs;
     team.defenseMs += summary.defenseMs;
     team.feedingMs += summary.feedingMs;
     team.blockedMs += summary.blockedMs;
@@ -222,4 +231,12 @@ function maxSteal(
 ) {
   const order = { not_observed: 0, none: 0, partial: 1, full: 2 };
   return order[next] > order[current] ? next : current;
+}
+
+function observedMatchMs(submission: MatchSubmission) {
+  const intervalEndMs = submission.actionIntervals.reduce(
+    (latest, interval) => Math.max(latest, interval.endMs ?? interval.startMs),
+    0,
+  );
+  return Math.max(submission.elapsedMs, intervalEndMs);
 }

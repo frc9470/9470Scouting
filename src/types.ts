@@ -211,6 +211,10 @@ export interface TeamAggregate {
   teamNumber: string;
   submissions: MatchSubmission[];
   matches: number;
+  totalObservedMs: number;
+  drivingMs: number;
+  intakingMs: number;
+  scoringMs: number;
   incapCount: number;
   defenseMs: number;
   feedingMs: number;
